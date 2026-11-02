@@ -13,6 +13,9 @@ extends Node
 ##                          Vernichtung seines Schwadrons nach h_flag_linger Sekunden auf. Kartenlogik wie oben.
 ##                          Feineinstellung: --h_<name>=<wert> (Variablen h_* unten), z. B. --h_evade=0 --h_flee=0
 ##   --autoplay --passive   nur die Strategie-Simulation beobachten (kein Kampf, keine Sprünge)
+##   --raid                 zusätzlich Angriffe auf das Feindsystem: mit voller Energie und Bomben hinspringen,
+##                          Empfangskomitee abwehren, Städte bombardieren, zum Nachladen zurück (--raid_target=
+##                          auto|home|outer, --raid_energy=80, --raid_return=35). Protokoll: RAID_* / ENEMY_SUMMARY
 ##
 ## Energie-Buchhaltung (in allen Modi): Sprungkosten und erlittene Treffer werden dem Schwadron
 ## zugeordnet, gegen das gerade gekämpft wird. Ausgaben (Schlüssel=Wert, für Auswertungsskripte):
@@ -37,6 +40,20 @@ var _log_t := 0.0
 var skill := 0.85
 var passive := false   ## nur Strategie-Simulation beobachten (kein Kampf, keine Sprünge)
 var human := false     ## menschenähnlicher Testfahrer (Testargument --human)
+# --- Feindsystem (--raid) ---
+var raid := false
+var raid_target := "auto"   ## auto: Heimatwelt, sobald die Bomben für alle ihre Städte reichen; sonst äußere Planeten
+var raid_energy := 80.0     ## Mindestenergie für den Sprung ins Feindsystem
+var raid_return := 35.0     ## darunter (oder ohne Bomben) zurück nach Helion
+var _bomb_city := -1
+var _bomb_lock_t := 0.0
+var _bomb_delay := 0.0
+var _bomb_backing := false     ## zu nah an der Zielstadt: zurücksetzen, bis genug Anlauf da ist
+var _bomb_city_t := 0.0        ## Zeit am aktuellen Ziel ohne Abwurf (danach anderes Ziel)
+var _bomb_skip := -1           ## zuletzt aufgegebenes Ziel
+var _switch_t := 0.0
+var _raids := 0
+var _raid := Acct.new()       ## Energieverlust im Feindsystem (Empfangskomitee, Feindplaneten, Langsprünge)
 
 # ---------------------------------------------------------------------------------------------
 #  Mensch: Parameter (überschreibbar mit Testargument --h_<name>=<wert>)
@@ -106,6 +123,10 @@ func apply_test_args(args: Dictionary) -> void:
 	for k in H_KNOBS:
 		if args.has(k):
 			set(k, float(args[k]))
+	raid = args.has("raid")
+	raid_target = str(args.get("raid_target", raid_target))
+	raid_energy = float(args.get("raid_energy", raid_energy))
+	raid_return = float(args.get("raid_return", raid_return))
 
 
 func _mode_name() -> String:
@@ -146,6 +167,9 @@ func _process(delta: float) -> void:
 		if sc is SpaceCombat and (sc as SpaceCombat).mode == SpaceCombat.Mode.ORBIT and not (sc as SpaceCombat).orbit_done:
 			(sc as SpaceCombat).debug_finish_orbit()
 		return
+	if sc is PlanetCombat and (sc as PlanetCombat).enemy_mode:
+		if _enemy_planet(sc as PlanetCombat, delta):
+			return
 	if human:
 		_fly_human(sc, delta)
 	else:
@@ -175,7 +199,7 @@ func _no_target(sc: CombatBase, delta: float) -> void:
 	_decide_t += delta
 	if _decide_t > 3.0:
 		_decide_t = 0.0
-		if sc is SpaceCombat and (sc as SpaceCombat).is_docking() and GameState.energy < Config.energy_max - 0.5:
+		if sc is SpaceCombat and (sc as SpaceCombat).is_docking() and (GameState.energy < Config.energy_max - 0.5 or (Config.enemy_system_enabled and GameState.bombs < Config.bombs_max)):
 			return
 		if Main.instance.can_open_map():
 			Main.instance.open_map()
@@ -229,8 +253,6 @@ func _fly(sc: CombatBase, delta: float) -> void:
 		pc.speed = Config.planet_speed_forward if dist > 140.0 else (0.0 if dist > 70.0 else -Config.planet_speed_backward)
 		var fwd := Vector2(-sin(pc.yaw), -cos(pc.yaw))
 		pc.pos += fwd * pc.speed * delta
-	elif sc is EnemySystemState:
-		return
 	var to_aim := aim - sc.camera.global_position
 	if sc is PlanetCombat:
 		to_aim.y = 0.0   # keine Neigung auf Planeten: nur horizontal zielen
@@ -556,8 +578,21 @@ func _choose_jump() -> void:
 	_release()
 	var energy := GameState.energy
 	var me := GameState.player_map_pos
-	# wenig Energie → nächste Station
-	if energy < 45.0:
+	if GameState.player_system == 1:
+		_choose_enemy_jump()
+		return
+	var threat := false
+	for tsq in GameState.squadrons:
+		if tsq.state == SquadronData.State.LANDED or tsq.state == SquadronData.State.AT_STATION:
+			threat = true
+	if raid and not threat and energy >= raid_energy and GameState.bombs >= mini(8, Config.bombs_max) and Config.enemy_system_enabled:
+		_raids += 1
+		print("[%s] RAID_START n=%d energy=%.1f bombs=%d enemy_cities=%d/%d" % [GameState.format_time(GameState.sim_time), _raids, energy, GameState.bombs, GameState.enemy_cities_alive(), GameState.enemy_cities_total()])
+		_do_jump(GameState.Loc.ENEMY_SYSTEM, -1, _raid)
+		return
+	# wenig Energie (bzw. bei Angriffen aufs Feindsystem: zu wenige Bomben) → nächste Station
+	var rearm := raid and not threat and GameState.bombs < mini(8, Config.bombs_max) and Config.enemy_system_enabled
+	if energy < 45.0 or rearm or (raid and not threat and energy < raid_energy):
 		var best: StationData = null
 		for s in GameState.stations:
 			if not s.destroyed and (best == null or s.map_pos().distance_to(me) < best.map_pos().distance_to(me)):
@@ -592,6 +627,146 @@ func _choose_jump() -> void:
 		_do_jump(GameState.Loc.SQUADRON, target_sq.id, _acct_for(target_sq))
 	else:
 		Main.instance.close_map()
+
+
+## Feindsystem: Empfangskomitee abwarten, Planeten mit Bomben angreifen, zum Nachladen zurück.
+func _choose_enemy_jump() -> void:
+	var energy := GameState.energy
+	if GameState.reception_active:
+		if energy < 25.0:
+			print("[%s] RAID_RETURN reason=reception energy=%.1f" % [GameState.format_time(GameState.sim_time), energy])
+			_do_jump(GameState.Loc.HOME_SYSTEM, -1, _raid)
+		else:
+			Main.instance.close_map()   # weiterkämpfen
+		return
+	var target := _raid_planet()
+	if not raid or target == null or energy < raid_return or GameState.bombs <= 0:
+		print("[%s] RAID_RETURN energy=%.1f bombs=%d enemy_cities=%d/%d" % [GameState.format_time(GameState.sim_time), energy, GameState.bombs, GameState.enemy_cities_alive(), GameState.enemy_cities_total()])
+		_do_jump(GameState.Loc.HOME_SYSTEM, -1, _raid)
+		return
+	if GameState.is_player_at_enemy_planet(target.id):
+		Main.instance.close_map()
+		return
+	print("[%s] RAID_PLANET %s cities=%d defenders=%d energy=%.1f bombs=%d" % [GameState.format_time(GameState.sim_time), target.name, target.alive_cities(), target.defenders, energy, GameState.bombs])
+	_do_jump(GameState.Loc.ENEMY_PLANET, target.id, _raid)
+
+
+func _raid_planet() -> PlanetData:
+	var home := GameState.enemy_home()
+	var home_ok := home != null and home.alive_cities() > 0
+	var best: PlanetData = null
+	for p in GameState.enemy_planets:
+		if p.is_home or p.alive_cities() == 0:
+			continue
+		if best == null or p.alive_cities() > best.alive_cities():
+			best = p
+	match raid_target:
+		"home":
+			return home if home_ok else best
+		"outer":
+			return best if best else (home if home_ok else null)
+	if home_ok and GameState.bombs >= home.alive_cities():
+		return home
+	return best if best else (home if home_ok else null)
+
+
+## Feindplanet: erst die Verteidiger (Laser), dann Städte bombardieren – Aufschlagmarke auf die Stadt bringen.
+## Gibt true zurück, wenn die Szene hier vollständig gesteuert wurde.
+func _enemy_planet(sc: PlanetCombat, delta: float) -> bool:
+	_switch_t -= delta
+	var fighters := 0
+	for e in sc.enemies:
+		if is_instance_valid(e) and e.alive:
+			fighters += 1
+	if fighters > 0:
+		_set_weapon(sc, CombatBase.Weapon.LASER)
+		return false
+	if sc.planet.alive_cities() == 0 or GameState.bombs <= 0 or GameState.game_over:
+		_set_weapon(sc, CombatBase.Weapon.LASER)
+		_no_target(sc, delta)
+		return true
+	_decide_t = 0.0
+	_set_weapon(sc, CombatBase.Weapon.BOMB)
+	if sc.weapon != CombatBase.Weapon.BOMB:
+		_release()
+		return true
+	_bomb_city_t += delta
+	if _bomb_city >= 0 and _bomb_city_t > 25.0:
+		_bomb_skip = _bomb_city   # festgefahren: anderes Ziel versuchen
+		_bomb_city = -1
+	if _bomb_city < 0 or _bomb_city >= sc.planet.cities.size() or not sc.planet.cities[_bomb_city]:
+		_bomb_city = _nearest_city(sc)
+		_bomb_lock_t = 0.0
+		_bomb_city_t = 0.0
+		_bomb_backing = false
+		_bomb_delay = randf_range(0.12, 0.5) if human else 0.0
+	if _bomb_city < 0:
+		return true
+	var to: Vector2 = (sc.planet.city_pos[_bomb_city] as Vector2) - sc.player_xz()
+	var dist := to.length()
+	var want_yaw := atan2(-to.x, -to.y)
+	var e_yaw := wrapf(want_yaw - sc.yaw, -PI, PI)
+	# Anlauf mit Hysterese: zu nah → zurücksetzen bis ~120 m, dann mit Vollgas anfliegen; die Aufschlagmarke
+	# wandert dabei von ~55 m (Stand) bis ~140 m (Vollgas) nach vorn und kreuzt die Stadt
+	if dist < 70.0:
+		_bomb_backing = true
+	elif dist > 120.0:
+		_bomb_backing = false
+	var drive := 1.0
+	if _bomb_backing:
+		drive = -1.0
+	elif absf(rad_to_deg(e_yaw)) > 30.0:
+		drive = 0.0
+	var raw := Vector2.ZERO
+	if human:
+		raw = _h_control(Vector2(e_yaw, 0.0), delta, deg_to_rad(Config.planet_turn_rate))
+	else:
+		raw = Vector2(clampf(e_yaw * 6.0, -1.0, 1.0), 0.0)
+	_h_steer(sc, raw, delta, drive)
+	if _fire_hold:
+		_release()   # Bomben: jeder Abwurf ein eigener Tastendruck
+		return true
+	if sc.impact_city >= 0 and not sc.impact_pending and sc.bomb_cd <= 0.0:
+		_bomb_lock_t += delta
+		if _bomb_lock_t >= _bomb_delay:
+			Input.action_press("fire")
+			_fire_hold = true
+			_fire_weapon = CombatBase.Weapon.BOMB
+			_bomb_lock_t = 0.0
+			_bomb_city_t = 0.0
+			_bomb_delay = randf_range(0.12, 0.5) if human else 0.0
+	else:
+		_bomb_lock_t = 0.0
+	return true
+
+
+func _nearest_city(sc: PlanetCombat) -> int:
+	var best := -1
+	var bd := INF
+	for i in sc.planet.cities.size():
+		if sc.planet.cities[i]:
+			var d: float = (sc.planet.city_pos[i] as Vector2).distance_to(sc.player_xz())
+			if d < 90.0:
+				d += 400.0   # zu nah für einen Abwurf: lieber eine andere Stadt
+			if i == _bomb_skip:
+				d += 1000.0  # gerade erst aufgegeben
+			if d < bd:
+				bd = d
+				best = i
+	return best
+
+
+## Waffe über die normale Eingabe wechseln (Q/Tab), wie ein Spieler.
+func _set_weapon(sc: CombatBase, w: int) -> void:
+	if not sc.bombs_allowed() or sc.weapon == w or _switch_t > 0.0:
+		return
+	_switch_t = 0.5
+	_release()
+	for pressed in [true, false]:
+		var ev := InputEventAction.new()
+		ev.action = "switch_weapon"
+		ev.pressed = pressed
+		Input.parse_input_event(ev)
 
 
 ## Sprung mit Buchung der Sprungkosten (a = Konto des Ziel-Schwadrons, null = Tankfahrt/Sonstiges).
@@ -661,6 +836,9 @@ func _acct_reset() -> void:
 	_accts.clear()
 	_orbit = Acct.new()
 	_orbit.name = "Orbit"
+	_raid = Acct.new()
+	_raid.name = "Feindsystem"
+	_raids = 0
 	_overhead = Acct.new()
 	_destroyed.clear()
 	_cur = null
@@ -696,8 +874,12 @@ func _fight_acct(sc: CombatBase) -> Acct:
 		var s := sc as SpaceCombat
 		if s.mode == SpaceCombat.Mode.ORBIT:
 			return _orbit
+		if s.mode == SpaceCombat.Mode.RECEPTION:
+			return _raid
 		return _acct_for(s.squadron)
 	if sc is PlanetCombat:
+		if (sc as PlanetCombat).enemy_mode:
+			return _raid
 		return _acct_for((sc as PlanetCombat).squadron)
 	return null
 
@@ -951,6 +1133,13 @@ func _print_summary() -> void:
 		laser[0], laser[1], ion[0], ion[1], _evade_attempts, _evading_time / maxf(_combat_time, 0.001), _orbit.cost,
 		1 if GameState.game_over else 0, GameState.game_over_reason if GameState.game_over else "-", GameState.score,
 		GameState.total_alive_cities(), GameState.total_cities(), GameState.energy])
+	if raid or int(GameState.stats.get("enemy_jumps", 0)) > 0:
+		var st: Dictionary = GameState.stats
+		print("ENEMY_SUMMARY raids=%d enemy_jumps=%d receptions=%d raid_cost=%.1f raid_jump_cost=%.1f fighters_killed=%d enemy_cities=%d/%d bombs=%d/%d intercepted=%d production=%.2f enemy_squadrons=%d victory=%d end=%s %s" % [
+			_raids, st.get("enemy_jumps", 0), st.get("receptions", 0), _raid.cost, _raid.jump, _raid.fk,
+			st.get("enemy_cities", 0), GameState.enemy_cities_total(), st.get("bombs_hit", 0), st.get("bombs_dropped", 0),
+			st.get("enemy_squadrons_intercepted", 0), GameState.enemy_production_rate(), GameState.enemy_squadrons.size(),
+			1 if GameState.victory else 0, GameState.end_kind if GameState.end_kind != "" else "-", _acct_details(_raid)])
 	if human:
 		print("HUMAN_STATS ion_shots=%d ion_true_err_avg=%.2f laser_frames=%d laser_true_err_avg=%.2f max_track_cmd=%.2f flagship_shots=%d" % [
 			_h_stat.ion_n, _h_stat.ion_err / maxf(_h_stat.ion_n, 1.0), _h_stat.laser_n, _h_stat.laser_err / maxf(_h_stat.laser_n, 1.0),

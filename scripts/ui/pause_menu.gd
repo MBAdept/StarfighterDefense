@@ -6,6 +6,8 @@ signal closed
 
 var _box: VBoxContainer
 var _sub: Control = null
+var _quit_btn: Button
+var _quit_armed := false
 
 
 func _ready() -> void:
@@ -29,7 +31,9 @@ func _ready() -> void:
 	_box.add_child(UITheme.button("WEITER", _resume))
 	_box.add_child(UITheme.button("OPTIONEN", func(): _open_sub(OptionsMenu.new())))
 	_box.add_child(UITheme.button("STEUERUNG", func(): _open_sub(ControlsHelp.new())))
-	_box.add_child(UITheme.button("ZUM HAUPTMENÜ", _to_title))
+	# [Vorgabe] vorzeitiger Abbruch führt zur Auswertung (Sicherheitsabfrage: zweimal bestätigen)
+	_quit_btn = UITheme.button("SPIEL BEENDEN", _to_title)
+	_box.add_child(_quit_btn)
 	Audio.ui("map_open", -6.0)
 	await get_tree().process_frame
 	_box.get_child(1).grab_focus()
@@ -50,9 +54,20 @@ func _resume() -> void:
 
 
 func _to_title() -> void:
+	if not _quit_armed:
+		_quit_armed = true
+		_quit_btn.text = "WIRKLICH BEENDEN? (AUSWERTUNG)"
+		var tw := create_tween()
+		tw.tween_interval(4.0)
+		tw.tween_callback(func():
+			_quit_armed = false
+			if is_instance_valid(_quit_btn):
+				_quit_btn.text = "SPIEL BEENDEN"
+		)
+		return
 	closed.emit()
 	queue_free()
-	Main.instance.goto_title()
+	Main.instance.abort_game()
 
 
 func _unhandled_input(event: InputEvent) -> void:

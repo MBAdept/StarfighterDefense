@@ -5,6 +5,8 @@ extends CombatBase
 ##  Steuerung links/rechts (drehen) und vorwärts/rückwärts, Scanner mit eigenem Schiff und Städten.
 ##  Zerstörer bombardieren Städte (unbeweglich), können abbrechen und sich dem Spieler zuwenden.
 ##  Planet vorläufig gerettet, wenn alle Zerstörer auf ihm vernichtet sind.
+##  Feindplaneten (planet.is_enemy): Verteidiger-Fighter in Dreierwellen ohne Regeneration, Städte werden
+##  mit Bomben zerstört (manueller Waffenwechsel Bordlaser / Bomben, ballistischer Abwurf mit Aufschlagmarke).
 ## =============================================================================================
 
 var planet: PlanetData
@@ -22,6 +24,15 @@ var wave_timer := -1.0
 var _boundary_warn := 0.0
 var _bob := 0.0
 var _city_models := {}
+# Feindplanet
+var enemy_mode := false
+var _bombs: Array = []            ## fallende Bomben: {p0, v0, t, t_hit, node}
+var marker: MeshInstance3D        ## Aufschlagmarke am Boden
+var marker_mat: ShaderMaterial
+var impact_point := Vector3.ZERO  ## vorausberechneter Aufschlag einer jetzt abgeworfenen Bombe
+var impact_city := -1             ## intakte Stadt im Trefferkreis (-1 = keine)
+var impact_pending := false       ## auf diese Stadt fällt bereits eine Bombe (Marke nicht grün)
+var _cam_pitch := 0.0
 
 
 static func create(p: PlanetData) -> PlanetCombat:
@@ -32,10 +43,17 @@ static func create(p: PlanetData) -> PlanetCombat:
 
 func _ready() -> void:
 	look = PlanetLook.surface(planet.type)
-	if planet.landed_squadron != -1:
+	enemy_mode = planet.is_enemy
+	if not enemy_mode and planet.landed_squadron != -1:
 		squadron = GameState.squadron_by_id(planet.landed_squadron)
 	super._ready()
 	location_name = planet.name.to_upper() + " · OBERFLÄCHE"
+	if enemy_mode:
+		GameState.enemy_city_destroyed.connect(_on_enemy_city_destroyed)
+		_place_player()
+		_update_camera(0.0)
+		_setup_enemy_planet()
+		return
 	GameState.city_destroyed.connect(_on_city_destroyed)
 	GameState.planet_saved.connect(_on_planet_saved)
 	GameState.squadron_destroyed.connect(_on_squadron_destroyed)
@@ -51,6 +69,9 @@ func _ready() -> void:
 
 
 func music_track() -> String:
+	if enemy_mode:
+		var fight := (planet.defenders > 0 or _fighters_alive() > 0) and planet.alive_cities() > 0
+		return "combat_planet" if fight else "enemy_system_theme"
 	return "combat_planet" if squadron and squadron.state != SquadronData.State.DESTROYED else "map_theme"
 
 
@@ -112,6 +133,8 @@ func _build_ground() -> void:
 	m.set_shader_parameter("noise_tex", Effects.noise_texture())
 	m.set_shader_parameter("lava", look.lava)
 	m.set_shader_parameter("water", look.water * 0.5)
+	if look.has("water_color"):
+		m.set_shader_parameter("water_color", look.water_color)
 	g.material_override = m
 	g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(g)
@@ -160,7 +183,13 @@ func _build_mountains() -> void:
 
 
 func _city_model_name(i: int) -> String:
+	if enemy_mode and Assets.has_model("alien_city_a"):
+		return ["alien_city_a", "alien_city_b", "alien_city_c"][int(planet.city_variant[i]) % 3]
 	return ["city_a", "city_b", "city_c"][int(planet.city_variant[i]) % 3]
+
+
+func _ruins_model_name() -> String:
+	return "alien_city_ruins" if enemy_mode and Assets.has_model("alien_city_ruins") else "city_ruins"
 
 
 func _build_cities() -> void:
@@ -180,16 +209,16 @@ func _set_city_model(i: int, alive: bool) -> void:
 	var root: Node3D = city_nodes[i]
 	for c in root.get_children():
 		c.queue_free()
-	var m := Assets.model(_city_model_name(i) if alive else "city_ruins")
+	var m := Assets.model(_city_model_name(i) if alive else _ruins_model_name())
 	root.add_child(m)
 	if alive:
 		var b := Assets.find_node_named(m, "Beacon")
 		if b:
-			var g := Assets.glow_sprite(Color(1.0, 0.3, 0.25), 5.0, 4.0)
+			var g := Assets.glow_sprite(Color(1.0, 0.18, 0.5) if enemy_mode else Color(1.0, 0.3, 0.25), 5.0, 4.0)
 			b.add_child(g)
 			city_beacons.append(g)
 		var l := OmniLight3D.new()
-		l.light_color = Color(1.0, 0.8, 0.55)
+		l.light_color = Color(1.0, 0.35, 0.6) if enemy_mode else Color(1.0, 0.8, 0.55)
 		l.light_energy = 1.2
 		l.omni_range = 45.0
 		l.position = Vector3(0, 12, 0)
@@ -326,7 +355,17 @@ func _build_dust() -> void:
 # =============================================================================================
 func _place_player() -> void:
 	var target := Vector2.ZERO
-	if squadron and squadron.group_city >= 0 and squadron.group_city < planet.city_pos.size():
+	if enemy_mode:
+		# Feindplanet: Blick auf die Mitte der verbliebenen Städte
+		var n := 0
+		var sum := Vector2.ZERO
+		for i in planet.cities.size():
+			if planet.cities[i]:
+				sum += planet.city_pos[i]
+				n += 1
+		if n > 0:
+			target = sum / n
+	elif squadron and squadron.group_city >= 0 and squadron.group_city < planet.city_pos.size():
 		target = planet.city_pos[squadron.group_city]
 	var a := randf() * TAU
 	pos = target + Vector2(cos(a), sin(a)) * 330.0
@@ -367,7 +406,7 @@ func _update_camera(delta: float) -> void:
 	_bob += delta
 	var alt := Config.planet_altitude + sin(_bob * 1.1) * 0.25
 	camera.position = Vector3(pos.x, alt, pos.y)
-	camera.rotation = Vector3(0.0, yaw, -turn_rate * 0.06)
+	camera.rotation = Vector3(_cam_pitch, yaw, -turn_rate * 0.06)
 
 
 func _process(delta: float) -> void:
@@ -378,6 +417,12 @@ func _process(delta: float) -> void:
 		if is_instance_valid(city_beacons[i]):
 			city_beacons[i].visible = fmod(Time.get_ticks_msec() / 1000.0 + i * 0.37, 1.6) < 0.2
 	_update_city_fx(delta)
+	if enemy_mode:
+		if not victory_mode:
+			_update_defender_waves(delta)
+		_update_bombs(delta)
+		_update_marker(delta)
+		return
 	if squadron and squadron.state != SquadronData.State.DESTROYED:
 		_update_waves(delta)
 	_update_bombard_audio()
@@ -403,7 +448,8 @@ func _begin_attack(landing_now: bool) -> void:
 		Audio.alarm(-4.0)
 	else:
 		hud.show_message(planet.name.to_upper() + " WIRD ANGEGRIFFEN", sub, 3.0, UITheme.RED)
-	Audio.play_music("combat_planet", 1.5)
+	if not frozen:
+		Audio.play_music("combat_planet", 1.5)   # bei offener Karte übernimmt close_map() die Musik
 
 
 func _on_squadron_landed(sq: SquadronData, p: PlanetData) -> void:
@@ -450,7 +496,15 @@ func _update_waves(delta: float) -> void:
 
 func _on_enemy_removed(e: Enemy) -> void:
 	if e.kind == Enemy.Kind.FIGHTER:
-		GameState.on_fighter_killed(squadron)
+		if enemy_mode:
+			# [Vorgabe] Verteidiger regenerieren sich nicht
+			GameState.on_defender_killed(planet)
+			if planet.defenders <= 0 and _fighters_alive() == 0 and not GameState.game_over:
+				hud.show_message("LUFTVERTEIDIGUNG AUSGESCHALTET", "Jetzt in Ruhe bombardieren (Q: Bomben)" if planet.alive_cities() > 0 else "", 3.2, UITheme.GREEN)
+				Audio.sfx("squadron_destroyed")
+				Audio.play_music(music_track(), 3.0)
+		else:
+			GameState.on_fighter_killed(squadron)
 
 
 func on_destroyer_engages(d: Destroyer) -> void:
@@ -570,6 +624,307 @@ func _on_city_destroyed(p: PlanetData, idx: int) -> void:
 func _on_unfrozen() -> void:
 	if squadron and squadron.state == SquadronData.State.DESTROYED:
 		squadron = null
+
+
+# =============================================================================================
+#  Feindplanet: Verteidiger, Bomben, Aufschlagmarke
+# =============================================================================================
+func _setup_enemy_planet() -> void:
+	weapon_manual = Weapon.LASER
+	_build_marker()
+	_update_enemy_texts()
+	var title := ("HEIMATWELT " if planet.is_home else "") + planet.name.to_upper()
+	var alive := planet.alive_cities()
+	if alive == 0:
+		hud.show_message(title, "Alle Städte zerstört", 2.5, UITheme.TEXT_DIM)
+	elif planet.defenders > 0:
+		wave_timer = 2.4
+		hud.show_message(title, "%d Verteidiger steigen auf · %d Bomben an Bord (Q: Bomben)" % [planet.defenders, GameState.bombs], 3.4, UITheme.RED)
+		Audio.alarm(-6.0)
+	else:
+		hud.show_message(title, "Keine Luftverteidigung · %d Bomben an Bord (Q: Bomben)" % GameState.bombs, 3.2, UITheme.AMBER)
+
+
+func _update_enemy_texts() -> void:
+	var alive := planet.alive_cities()
+	location_sub = ("FEINDLICHE HEIMATWELT · " if planet.is_home else "Feindplanet · ") + (UITheme.cities_text(alive) if alive > 0 else "alle Städte zerstört")
+	if alive > 0:
+		hint_text = "Q / TAB: Bordlaser / Bomben  ·  Aufschlagmarke auf eine Stadt, dann FEUER  ·  LEERTASTE: Karte"
+	else:
+		hint_text = "LEERTASTE: Feindkarte"
+
+
+func bombs_allowed() -> bool:
+	return enemy_mode and not dying and not victory_mode
+
+
+## Verteidiger steigen in Wellen auf (fighters_per_wave), bis der Bestand des Planeten aufgebraucht ist.
+func _update_defender_waves(delta: float) -> void:
+	# Verteidiger schützen Städte: ohne Städte steigen keine neuen Wellen mehr auf
+	if _fighters_alive() > 0 or planet.defenders <= 0 or planet.alive_cities() == 0:
+		return
+	if wave_timer < 0.0:
+		wave_timer = Config.wave_delay + 1.5
+	wave_timer -= delta
+	if wave_timer > 0.0:
+		return
+	wave_timer = -1.0
+	wave += 1
+	var n := mini(Config.fighters_per_wave, planet.defenders)
+	var cb := camera.global_transform.basis
+	for i in n:
+		var f := Fighter.new()
+		f.planet_mode = true
+		f.fire_rate_factor = Config.enemy_home_fire_rate_factor if planet.is_home else Config.enemy_defender_fire_rate_factor
+		f.burst_shots = Config.enemy_home_burst_shots if planet.is_home else Config.enemy_defender_burst_shots
+		f.setup(self, null)
+		var local := Vector3(randf_range(-70, 70), 0, -randf_range(180, 240))
+		var wp := camera.global_position + cb * local
+		wp.y = Config.planet_altitude + randf_range(0, 6)
+		add_enemy(f, wp)
+	Audio.sfx("wave_incoming", -2.0)
+	hud.show_message("VERTEIDIGER IM ANFLUG", "%d Fighter · Bestand %d" % [n, planet.defenders], 1.6, UITheme.FIGHTER_COLOR, true)
+
+
+func _build_marker() -> void:
+	marker = MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2.ONE * Config.bomb_hit_radius * 2.0 / 0.92   # Ring (r = 0.92) = Trefferradius
+	marker.mesh = pm
+	marker_mat = ShaderMaterial.new()
+	marker_mat.shader = load("res://shaders/bomb_marker.gdshader")
+	marker.material_override = marker_mat
+	marker.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	marker.visible = false
+	add_child(marker)
+
+
+## Abwurfpunkt und Anfangsgeschwindigkeit einer jetzt abgeworfenen Bombe.
+func _bomb_release() -> Array:
+	var fwd := Vector3(-sin(yaw), 0.0, -cos(yaw))
+	var p0 := camera.global_position + Vector3(0.0, -1.6, 0.0) + fwd * 1.2
+	var v0 := fwd * (speed + Config.bomb_forward_speed) + Vector3(0.0, -Config.bomb_drop_speed, 0.0)
+	return [p0, v0]
+
+
+static func _fall_time(h: float, vy: float) -> float:
+	var g := maxf(Config.bomb_gravity, 0.1)
+	return (vy + sqrt(maxf(vy * vy + 2.0 * g * h, 0.0))) / g
+
+
+static func _ballistic(p0: Vector3, v0: Vector3, t: float) -> Vector3:
+	return p0 + v0 * t + Vector3(0.0, -0.5 * Config.bomb_gravity * t * t, 0.0)
+
+
+## [FREI] Ballistischer Aufschlagpunkt (Boden y = 0) einer jetzt abgeworfenen Bombe.
+func predict_impact() -> Vector3:
+	var r := _bomb_release()
+	var p0: Vector3 = r[0]
+	var v0: Vector3 = r[1]
+	var hit := _ballistic(p0, v0, _fall_time(p0.y, v0.y))
+	return Vector3(hit.x, 0.0, hit.z)
+
+
+## Punkte der vorausberechneten Flugbahn (für die HUD-Darstellung).
+func bomb_trajectory(n: int) -> Array:
+	var r := _bomb_release()
+	var p0: Vector3 = r[0]
+	var v0: Vector3 = r[1]
+	var tf := _fall_time(p0.y, v0.y)
+	var out := []
+	for i in range(1, n + 1):
+		out.append(_ballistic(p0, v0, tf * float(i) / float(n)))
+	return out
+
+
+func drop_bomb() -> void:
+	if not bombs_allowed() or not GameState.use_bomb():
+		return
+	var r := _bomb_release()
+	var p0: Vector3 = r[0]
+	var v0: Vector3 = r[1]
+	var node := _make_bomb_node()
+	add_child(node)
+	node.global_position = p0
+	var t_hit := _fall_time(p0.y, v0.y)
+	var hit := _ballistic(p0, v0, t_hit)
+	_bombs.append({"p0": p0, "v0": v0, "t": 0.0, "t_hit": t_hit, "node": node, "city": _city_at(Vector2(hit.x, hit.z))})
+	if Audio.has_sound("bomb_release"):
+		Audio.sfx("bomb_release", -2.0)
+	else:
+		Audio.sfx("dock_clamp", -6.0, 1.6)
+	if Audio.has_sound("bomb_fall"):
+		Audio.sfx("bomb_fall", -5.0)
+	shake = maxf(shake, 0.15)
+
+
+func _make_bomb_node() -> Node3D:
+	var root := Node3D.new()
+	var m: Node3D
+	if Assets.has_model("bomb"):
+		m = Assets.model("bomb")
+	else:
+		m = Node3D.new()
+		var mi := MeshInstance3D.new()
+		var cm := CapsuleMesh.new()
+		cm.radius = 0.24
+		cm.height = 1.8
+		mi.mesh = cm
+		mi.rotation.x = PI * 0.5   # Längsachse entlang Z (Bug = -Z)
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.55, 0.58, 0.62)
+		mat.metallic = 0.7
+		mat.roughness = 0.35
+		mi.material_override = mat
+		m.add_child(mi)
+	root.add_child(m)
+	var tail := Assets.find_node_named(m, "Tail")
+	var g := Assets.glow_sprite(Color(1.0, 0.75, 0.35), 2.4, 3.0)
+	if tail:
+		tail.add_child(g)
+	else:
+		root.add_child(g)
+		g.position = Vector3(0, 0, 1.0)
+	return root
+
+
+func _update_bombs(delta: float) -> void:
+	for b in _bombs.duplicate():
+		b.t = minf(float(b.t) + delta, float(b.t_hit))
+		var p0: Vector3 = b.p0
+		var v0: Vector3 = b.v0
+		var t: float = b.t
+		var pos := _ballistic(p0, v0, t)
+		var vel := v0 + Vector3(0.0, -Config.bomb_gravity * t, 0.0)
+		var n: Node3D = b.node
+		if is_instance_valid(n):
+			n.global_position = pos
+			var vd := vel.normalized()
+			if vel.length_squared() > 0.01:
+				n.look_at(pos + vd, Vector3.UP if absf(vd.y) < 0.98 else Vector3.FORWARD)
+		if t >= float(b.t_hit):
+			_bombs.erase(b)
+			if is_instance_valid(n):
+				n.queue_free()
+			_bomb_impact(Vector3(pos.x, 0.0, pos.z))
+
+
+## Beim Verlassen des Planeten (Sprung über die Karte): noch fallende Bomben schlagen sofort ein –
+## ihre Flugbahn steht beim Abwurf fest, die Bombe ist bereits verbraucht.
+func resolve_pending_bombs() -> void:
+	for b in _bombs.duplicate():
+		_bombs.erase(b)
+		var hit := _ballistic(b.p0, b.v0, float(b.t_hit))
+		if is_instance_valid(b.node):
+			b.node.queue_free()
+		_bomb_impact(Vector3(hit.x, 0.0, hit.z))
+
+
+## Intakte Stadt, deren Mitte höchstens bomb_hit_radius vom Punkt entfernt ist (-1 = keine).
+func _city_at(xz: Vector2) -> int:
+	var best := -1
+	var bd := Config.bomb_hit_radius
+	for i in planet.cities.size():
+		if planet.cities[i]:
+			var d: float = (planet.city_pos[i] as Vector2).distance_to(xz)
+			if d <= bd:
+				bd = d
+				best = i
+	return best
+
+
+## [Vorgabe] 1 Treffer zerstört eine Stadt; ein Fehlwurf ist verloren.
+func _bomb_impact(p: Vector3) -> void:
+	var idx := _city_at(Vector2(p.x, p.z))
+	if idx >= 0 and not GameState.game_over:
+		GameState.destroy_enemy_city(planet, idx)   # Effekte: _on_enemy_city_destroyed
+		return
+	Effects.explosion(fx_root, p + Vector3(0, 4.0, 0), 13.0, Color(1.0, 0.6, 0.28))
+	_add_scorch(p, 9.0)
+	if Audio.has_sound("bomb_impact"):
+		Audio.sfx_3d("bomb_impact", self, p, 4.0, 0.06, 0, 260.0)
+	else:
+		Audio.sfx_3d("explosion_large", self, p, 4.0, 0.06, 2, 260.0)
+	shake = maxf(shake, 0.45)
+	if not GameState.game_over:
+		hud.show_message("FEHLWURF", "Bombe verloren · noch %d" % GameState.bombs, 1.5, UITheme.AMBER, true)
+
+
+func _add_scorch(p: Vector3, size: float) -> void:
+	var t := Assets.tex("fx/smoke_puff.png")
+	if t == null:
+		return
+	var d := Decal.new()
+	d.texture_albedo = t
+	d.modulate = Color(0.05, 0.03, 0.03, 0.9)
+	d.size = Vector3(size * 2.0, 14.0, size * 2.0)
+	add_child(d)
+	d.global_position = Vector3(p.x, 0.0, p.z)
+	d.rotation.y = randf() * TAU
+
+
+func _update_marker(delta: float) -> void:
+	var bomb_mode := weapon == Weapon.BOMB and not dying and not victory_mode
+	var target_pitch := deg_to_rad(Config.bomb_camera_pitch) if bomb_mode else 0.0
+	_cam_pitch = lerpf(_cam_pitch, target_pitch, 1.0 - exp(-4.0 * delta))
+	if marker == null:
+		return
+	marker.visible = bomb_mode
+	if not bomb_mode:
+		impact_city = -1
+		return
+	impact_point = predict_impact()
+	impact_city = _city_at(Vector2(impact_point.x, impact_point.z))
+	impact_pending = impact_city >= 0 and is_city_pending(impact_city)
+	marker.global_position = impact_point + Vector3(0.0, 0.35, 0.0)
+	var col := UITheme.AMBER
+	if GameState.bombs <= 0:
+		col = Color(0.6, 0.6, 0.65)
+	elif impact_city >= 0 and not impact_pending:
+		col = UITheme.GREEN
+	marker_mat.set_shader_parameter("marker_color", col)
+	marker_mat.set_shader_parameter("lock", 1.0 if impact_city >= 0 and not impact_pending and GameState.bombs > 0 else 0.0)
+
+
+## Fällt bereits eine Bombe auf diese Stadt? (Die Marke wird dann nicht grün – keine Bombe verschwenden.)
+func is_city_pending(idx: int) -> bool:
+	for b in _bombs:
+		if int(b.get("city", -1)) == idx:
+			return true
+	return false
+
+
+func _on_enemy_city_destroyed(p: PlanetData, idx: int) -> void:
+	if p != planet:
+		return
+	var root: Node3D = city_nodes[idx]
+	var c := root.global_position
+	Effects.explosion(fx_root, c + Vector3(0, 10, 0), 30.0, Color(1.0, 0.42, 0.62))
+	var tw := create_tween()
+	for k in 3:
+		var off := Vector3(randf_range(-14, 14), randf_range(4, 16), randf_range(-14, 14))
+		tw.tween_interval(0.22)
+		tw.tween_callback(func(): Effects.explosion(fx_root, c + off, randf_range(16.0, 24.0), Color(1.0, 0.55, 0.25), false))
+	_add_scorch(c, 26.0)
+	var alien_snd := Audio.has_sound("alien_city_destroyed")
+	# alien_city_destroyed ist ~2,5 dB lauter gemischt als city_destroyed → etwas weniger Anhebung
+	Audio.sfx_3d("alien_city_destroyed" if alien_snd else "city_destroyed", self, c, 5.5 if alien_snd else 8.0, 0.0, 0, 400.0)
+	Audio.sfx("explosion_huge", -6.0)
+	shake = maxf(shake, 1.0)
+	flash = maxf(flash, 0.35)
+	flash_color = Color(1.0, 0.6, 0.85)
+	_set_city_model(idx, false)
+	hud.add_popup(c + Vector3(0, 30, 0), "+%d" % Config.enemy_city_points, UITheme.GREEN)
+	_update_enemy_texts()
+	var left := planet.alive_cities()
+	if GameState.game_over or (planet.is_home and left == 0):
+		return   # Sieg: die Siegsequenz übernimmt (Meldung, Musik)
+	if left == 0:
+		hud.show_message("%s AUSGESCHALTET" % planet.name.to_upper(), "Von hier starten keine Schwadrone mehr · LEERTASTE: Feindkarte", 4.0, UITheme.GREEN)
+		Audio.sfx("planet_saved")
+		Audio.play_music(music_track(), 3.0)
+	else:
+		hud.show_message("FEINDSTADT %s ZERSTÖRT" % p.city_names[idx].to_upper(), "+%d Punkte · %s übrig · %d Bomben" % [Config.enemy_city_points, UITheme.cities_text(left), GameState.bombs], 2.6, UITheme.GREEN)
 
 
 func debug_kill_all() -> void:

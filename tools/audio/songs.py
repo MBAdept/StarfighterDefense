@@ -6,7 +6,11 @@ appears in the title theme (D minor, heroic), both combat tracks (E minor / F mi
 the docking theme (D major, relaxed), the game-over theme (D minor, slow) and – twisted into
 tritones – in the enemy-system theme.
 
-usage: /opt/tools/audiovenv/bin/python songs.py [title map combat_space combat_planet docking gameover enemy]
+Added later: the victory theme (D major – the motif as fanfare and march) and the debrief theme
+(B minor – the title theme slowed down, reflective).
+
+usage: /opt/tools/audiovenv/bin/python songs.py [title map combat_space combat_planet docking gameover enemy
+                                                 victory debrief]
 """
 from __future__ import annotations
 
@@ -608,8 +612,291 @@ def enemy_system_theme():
     return s
 
 
+# =============================================================================================
+# helpers for the later tracks (victory, debrief): harmony written as text, chords with voice leading
+# =============================================================================================
+def _harm(s, start_bar, text):
+    """'D | G | Bb C | D' -> [(beat, dur_beats, symbol)]; each bar is divided equally among its symbols"""
+    out = []
+    for i, bar in enumerate(text.split("|")):
+        syms = bar.split()
+        d = s.bpb / len(syms)
+        for k, sym in enumerate(syms):
+            out.append((s.bar(start_bar + i) + k * d, d, sym))
+    return out
+
+
+def _span(s, items, bar0, bar1):
+    return [it for it in items if s.bar(bar0) <= it[0] < s.bar(bar1)]
+
+
+def _merge(items):
+    out = []
+    for b, d, sym in items:
+        if out and out[-1][2] == sym and abs(out[-1][0] + out[-1][1] - b) < 1e-6:
+            out[-1][1] += d
+        else:
+            out.append([b, d, sym])
+    return out
+
+
+def _chords_items(s, track, items, low=55, high=76, n_voices=4, vel=0.7, legato=1.0):
+    """sustained, voice-led chords (equal neighbouring symbols merged)"""
+    prev = None
+    for b, d, sym in _merge(items):
+        v = voice_chord(sym, prev, low, high, n_voices)
+        prev = v
+        for m in v:
+            s.note(track, b, d * legato, m, vel)
+
+
+def _root(sym, octave=2, top=7):
+    """bass note of a chord symbol (slash bass respected); pitch classes above `top` drop an octave"""
+    _, _, bpc = parse_chord(sym)
+    m = 12 * (octave + 1) + bpc
+    return m - 12 if bpc > top else m
+
+
+_TIMP_HZ = {0: 65.4, 1: 69.3, 2: 73.4, 3: 77.8, 4: 82.4, 5: 87.3, 6: 92.5, 7: 98.0, 8: 51.9, 9: 55.0, 10: 58.3,
+            11: 61.7}
+
+
+def _timp_hz(sym, fifth=False):
+    r, _, _ = parse_chord(sym)
+    return _TIMP_HZ[(r + 7) % 12 if fifth else r]
+
+
+# =============================================================================================
+# 8) VICTORY – D major, 100 BPM, 32 bars (76.8 s) – the enemy home world is destroyed
+#    The title motif turned major: fanfare intro (the motif as a dotted brass call + the bVI–bVII–I
+#    "victory" cadence of planet_saved), march theme, lyrical string B section, tutti climax, quiet coda
+#    with a minor-iv glance back that rolls into the fanfare again (seamless loop).
+# =============================================================================================
+THEME_A_DMAJ = ("D4:1 A4:3 | B4:.5 A4:.5 G4:1 F#4:1 G4:1 | A4:1 E5:3 | F#5:.5 E5:.5 D5:1 C#5:1 A4:1 | "
+                "D4:1 A4:1 D5:2 | F#5:2 D5:1 B4:1 | G5:1.5 F#5:.5 E5:1 C#5:1 | D5:4")
+THEME_A_DMAJ_CLIMAX = ("D4:1 A4:3 | B4:.5 A4:.5 G4:1 F#4:1 G4:1 | A4:1 E5:3 | F#5:.5 E5:.5 D5:1 C#5:1 A4:1 | "
+                       "D4:1 A4:1 D5:2 | F#5:2 D5:1 B4:1 | D5:1 F5:1 E5:1 G5:1 | F#5:4")
+B_DMAJ = ("B4:2 D5:2 | A5:3 F#5:1 | G5:1.5 F#5:.5 E5:1 D5:1 | F#5:3 D5:1 | B4:2 D5:2 | A5:2 D6:2 | "
+          "B5:1.5 A5:.5 G#5:1 E5:1 | A5:4")
+FANFARE_DMAJ = "D4:.75 D4:.25 A4:2 r:1 | A4:.75 A4:.25 D5:2 r:1 | D5:1 F5:1 E5:1 G5:1 | F#5:3 r:1"
+
+
+def victory_theme():
+    s = Song("victory_theme", bpm=100, bars=32, tail=8.0, seed=81, delay_beats=0.75, delay_fb=0.3)
+    H = (_harm(s, 0, "D | D | Bb C | D")
+         + _harm(s, 4, "D | G | A | Bm A | D | Bm | G A | D")
+         + _harm(s, 12, "G | D/F# | Em | Bm | G | D/F# | E7 | A7sus4 A")
+         + _harm(s, 20, "D | G | A | Bm A | D | Bm | Bb C | D")
+         + _harm(s, 28, "D | G | Gm | Asus4 A"))
+    assert abs(H[-1][0] + H[-1][1] - s.total_beats) < 1e-6
+
+    s.add("pad", "synth", voice=ins.v_supersaw_pad, gain_db=-17, sends={"hall": 0.3}, hp=200,
+          voice_kw={"attack": 0.25, "cutoff": 2600})
+    s.add("strings", "fluid", program=48, gain_db=-10, sends={"hall": 0.35}, humanize=0.01, hp=110)
+    s.add("violins", "fluid", program=48, gain_db=-9, sends={"hall": 0.35}, humanize=0.008, channel=1, hp=180)
+    s.add("celli", "fluid", program=42, gain_db=-11, sends={"hall": 0.3}, humanize=0.008, channel=2, hp=40)
+    s.add("choir", "fluid", program=52, gain_db=-13, sends={"hall": 0.45}, channel=3, hp=160)
+    s.add("trumpets", "fluid", program=56, gain_db=-6, sends={"hall": 0.3}, humanize=0.006, channel=4, hp=150)
+    s.add("horns", "fluid", program=60, gain_db=-9, sends={"hall": 0.35}, humanize=0.008, channel=5, hp=90)
+    s.add("lowbrass", "fluid", program=57, gain_db=-12, sends={"hall": 0.3}, humanize=0.006, channel=6, hp=45)
+    s.add("sbrass", "synth", voice=ins.v_brass, gain_db=-11, sends={"hall": 0.25, "delay": 0.05}, hp=150)
+    s.add("lead", "synth", voice=ins.v_lead, gain_db=-12, sends={"hall": 0.22, "delay": 0.15}, hp=250)
+    s.add("bells", "synth", voice=ins.v_bell, gain_db=-18, sends={"hall": 0.35, "delay": 0.2}, hp=400)
+    s.add("sub", "synth", voice=ins.v_sub, gain_db=-19)
+    s.add("bassdrum", "drum", gain_db=-10, sends={"hall": 0.3}, hp=35)
+    s.add("snare", "drum", gain_db=-13, sends={"hall": 0.25, "plate": 0.05})
+    s.add("hat", "drum", gain_db=-23)
+    s.add("crash", "drum", gain_db=-16, sends={"hall": 0.2})
+    s.add("tom", "drum", gain_db=-13, sends={"hall": 0.25})
+    s.add("timp", "drum", gain_db=-11, sends={"hall": 0.4})
+    s.add("fx", "audio", gain_db=-15, sends={"hall": 0.2})
+    s.eq_lowmid, s.eq_presence, s.eq_air = -2.0, 0.5, 2.5
+
+    s.master_env = [(0, -1.5), (s.bar(4), -1.0), (s.bar(12), -3.0), (s.bar(18), -2.0), (s.bar(19.75), -1.0),
+                    (s.bar(20), 0.0), (s.bar(28), -3.5), (s.bar(31), -3.0), (s.bar(32), -1.5)]
+
+    # --- harmony beds ------------------------------------------------------------------------
+    _chords_items(s, "pad", H, low=50, high=74, n_voices=4, vel=0.65)
+    s.automate("pad", [(0, -4), (s.bar(4), 0), (s.bar(12), -2), (s.bar(20), 0), (s.bar(28), -3), (s.bar(32), -4)])
+    _chords_items(s, "strings", _span(s, H, 4, 32), low=55, high=76, n_voices=4, vel=0.62)
+    _chords_items(s, "horns", _span(s, H, 4, 12) + _span(s, H, 20, 28), low=53, high=69, n_voices=3, vel=0.62)
+    _chords_items(s, "choir", _span(s, H, 16, 28), low=57, high=74, n_voices=3, vel=0.68)
+    # celli: driving 8ths in the march sections, long notes elsewhere
+    for b, d, sym in _span(s, H, 4, 12) + _span(s, H, 20, 28):
+        r = _root(sym, 3, top=4)
+        for k in range(int(d * 2)):
+            s.note("celli", b + k * 0.5, 0.42, r + (7 if k % 4 == 2 else 0) + (12 if k % 4 == 3 else 0),
+                   0.78 if k % 2 == 0 else 0.62)
+    for b, d, sym in _merge(_span(s, H, 0, 4) + _span(s, H, 12, 20) + _span(s, H, 28, 32)):
+        s.note("celli", b, d, _root(sym, 3, top=4), 0.7)
+    for b, d, sym in _merge(_span(s, H, 4, 32)):
+        s.note("sub", b, d, _root(sym, 1, top=11), 0.75)
+    # low brass: roots in octaves (fanfare, march sections, cadences)
+    for b, d, sym in _merge(_span(s, H, 0, 12) + _span(s, H, 20, 28)):
+        r = _root(sym, 2, top=11)
+        s.note("lowbrass", b, d, r, 0.75)
+        s.note("lowbrass", b, d, r + 12, 0.7)
+
+    # --- intro: fanfare --------------------------------------------------------------------------
+    s.melody("trumpets", s.bar(0), FANFARE_DMAJ, vel=0.92)
+    s.melody("sbrass", s.bar(0), FANFARE_DMAJ, vel=0.8)
+    s.melody("horns", s.bar(0), "A3:.75 A3:.25 F#4:2 r:1 | F#4:.75 F#4:.25 A4:2 r:1 | Bb4:1 D5:1 C5:1 E5:1 | "
+                                "D5:3 r:1", vel=0.86)
+    s.clip("fx", s.bar(0), ins.fx_impact(s.rng, 1.0))
+    s.hit("crash", s.bar(0), "crash", 0.9)
+    for bt, hz, v in ((0, 73.4, 1.0), (0.75, 73.4, 0.7), (2, 55.0, 0.8), (4, 55.0, 0.9), (4.75, 55.0, 0.7),
+                      (6, 73.4, 0.85), (8, 58.3, 0.9), (10, 65.4, 0.9)):
+        s.hit("timp", bt, "timpani", v, tone=hz)
+    fill(s, "timp", "timpani", s.bar(3), 16, 0.25, 0.25, 1.0, tone=73.4)
+    snare_roll(s, "snare", s.bar(3) + 2, 2, v0=0.2, v1=0.9)
+    s.hit("bassdrum", 0, "taiko", 1.0, tone=52)
+    s.hit("bassdrum", s.bar(2), "taiko", 0.8, tone=52)
+
+    # --- A: march theme (bars 4-11) -----------------------------------------------------------
+    s.melody("trumpets", s.bar(4), THEME_A_DMAJ, vel=0.86)
+    s.melody("sbrass", s.bar(4), THEME_A_DMAJ, vel=0.72)
+    arp_track(s, "bells", ["D", "D", "Bm", "Bm", "G", "A", "D", "D"], 8, beats_per_chord=2, rate=2,
+              pattern="updown", low=74, octaves=1, vel=0.4, gate=0.9)
+
+    # --- B: lyrical strings (bars 12-19), horns answer with the motif -------------------------
+    s.melody("violins", s.bar(12), B_DMAJ, vel=0.8)
+    s.melody("horns", s.bar(14), "E4:1 B4:3 | r:4", vel=0.66)
+    s.melody("horns", s.bar(18), "B3:1 F#4:2 G#4:1 | A4:2 C#5:2", vel=0.7)
+    arp_track(s, "bells", ["G", "D/F#", "Em", "Bm"], 12, rate=2, pattern="updown", low=74, octaves=1, vel=0.36,
+              gate=0.9)
+
+    # --- A': tutti climax (bars 20-27) --------------------------------------------------------
+    s.melody("trumpets", s.bar(20), THEME_A_DMAJ_CLIMAX, vel=0.98)
+    s.melody("sbrass", s.bar(20), THEME_A_DMAJ_CLIMAX, vel=0.8)
+    s.melody("violins", s.bar(20), THEME_A_DMAJ_CLIMAX, vel=0.88, transpose=12)
+    s.melody("lead", s.bar(20), THEME_A_DMAJ_CLIMAX, vel=0.8, transpose=12)
+    for i, m in enumerate((86, 90, 93, 98)):
+        s.note("bells", s.bar(27) + i * 0.25, 1.5, m, 0.45)
+
+    # --- coda (bars 28-31): the motif once more, softly, a glance at G minor, then back to the fanfare
+    s.melody("horns", s.bar(28), "D4:1 A4:3 | B4:.5 A4:.5 G4:1 F#4:2 | G4:1 Bb4:3 | A4:4", vel=0.6)
+    s.melody("violins", s.bar(28), "F#5:4 | G5:2 B5:2 | Bb5:4 | A5:2 C#6:2", vel=0.5)
+
+    # --- percussion ------------------------------------------------------------------------------
+    for start, n in ((4, 8), (20, 8)):
+        drum_pattern(s, "bassdrum", "taiko", "X.......X.......", start, n, tone=52)
+        drum_pattern(s, "snare", "snare", "....X..o....X.oo" if start == 20 else "....X.......X..o", start, n)
+        drum_pattern(s, "hat", "hat", "x.o.x.o.x.o.x.o." if start == 4 else "xoxoxoxoxoxoxoxo", start, n)
+    for b, d, sym in _merge(_span(s, H, 4, 12) + _span(s, H, 20, 26)):
+        s.hit("timp", b, "timpani", 0.85, tone=_timp_hz(sym))
+        if d >= 4:
+            s.hit("timp", b + 2, "timpani", 0.6, tone=_timp_hz(sym, fifth=True))
+    for k in range(8):  # cadence bVI-bVII: driving timpani 8ths
+        s.hit("timp", s.bar(26) + k * 0.5, "timpani", 0.6 + 0.05 * k, tone=58.3 if k < 4 else 65.4)
+    s.hit("timp", s.bar(27), "timpani", 1.0, tone=73.4)
+    for b in (4, 8, 20, 24, 27):
+        s.hit("crash", s.bar(b), "crash", 0.95 if b in (20, 27) else 0.8)
+    s.hit("crash", s.bar(12), "crash", 0.5)
+    tom_fill(s, s.bar(11) + 2, 2.0, tones=(160, 130, 105, 85), v0=0.5, v1=0.9)
+    tom_fill(s, s.bar(25) + 3, 1.0, tones=(160, 130, 105, 85), v0=0.6, v1=1.0)
+    # B: soft pulse, timpani on the bar, roll into the climax
+    for b in range(12, 18):
+        s.hit("bassdrum", s.bar(b), "taiko", 0.5, tone=52)
+        s.hit("timp", s.bar(b), "timpani", 0.45, tone=_timp_hz(_span(s, H, b, b + 1)[0][2]))
+    snare_roll(s, "snare", s.bar(18), 8, v0=0.1, v1=0.95)
+    fill(s, "timp", "timpani", s.bar(19), 16, 0.25, 0.3, 1.0, tone=55.0)
+    s.clip("fx", s.bar(18), ins.fx_riser(s.bt(8), s.rng))
+    s.clip("fx", s.bar(20), ins.fx_impact(s.rng, 1.1))
+    # coda: gentle, then roll back into the fanfare
+    for b in (28, 29, 30):
+        s.hit("timp", s.bar(b), "timpani", 0.4, tone=_timp_hz(_span(s, H, b, b + 1)[0][2]))
+        s.hit("bassdrum", s.bar(b), "taiko", 0.4, tone=52)
+    s.hit("crash", s.bar(28), "crash", 0.45)
+    fill(s, "timp", "timpani", s.bar(31), 16, 0.15, 0.95, tone=55.0)
+    snare_roll(s, "snare", s.bar(31) + 2, 2, v0=0.15, v1=0.8)
+    s.clip("fx", s.bar(31), ins.fx_reverse_swell(s.bt(4), s.rng))
+    return s
+
+
+# =============================================================================================
+# 9) DEBRIEF – B minor, 72 BPM, 24 bars (80 s) – calm, reflective, slightly melancholic
+#    (mission evaluation after an aborted mission). The title theme note for note in B minor, slowed down,
+#    on a mellow synth lead over e-piano arpeggios; a hopeful turn to D major in the string B section.
+# =============================================================================================
+THEME_BMIN = ("B3:1 F#4:3 | G4:.5 F#4:.5 E4:1 D4:1 E4:1 | D4:1 A4:3 | B4:.5 A4:.5 G4:1 F#4:1 E4:1 | "
+              "B3:1 F#4:1 B4:2 | D5:2 B4:1 G4:1 | A4:1.5 G4:.5 F#4:1 E4:1 | F#4:4")
+B_BMIN = ("D5:3 E5:1 | F#5:2 C#5:2 | A4:3 B4:1 | F#4:4 | G4:2 B4:2 | E5:3 C#5:1 | D5:2 F#5:2 | E5:2 A#4:2")
+
+
+def debrief_theme():
+    s = Song("debrief_theme", bpm=72, bars=24, tail=10.0, seed=91, delay_beats=1.5, delay_fb=0.4,
+             target_lufs=-15.0)
+    H = (_harm(s, 0, "Bmadd9 | Gmaj7 | Em9 | F#7sus4 F#")
+         + _harm(s, 4, "Bmadd9 | Gmaj7 | Dadd9 | A6 | Bm7 | Gmaj9 | Em9 | F#7sus4 F#")
+         + _harm(s, 12, "Gmaj7 | A6 | F#m7 | Bm7 | Em9 | Asus4 A | Dmaj7 | F#7sus4 F#")
+         + _harm(s, 20, "Bmadd9 | Gmaj7 | Em9 | F#7sus4 F#"))
+    assert abs(H[-1][0] + H[-1][1] - s.total_beats) < 1e-6
+    s.eq_lowmid, s.eq_presence, s.eq_air = -4.5, 1.5, 4.0
+
+    s.add("pad", "synth", voice=ins.v_warm_pad, gain_db=-12.5, sends={"space": 0.35}, hp=250,
+          voice_kw={"cutoff": 1500, "release": 3.0})
+    s.add("ep", "synth", voice=ins.v_epiano, gain_db=-12, sends={"plate": 0.3, "delay": 0.12}, hp=200)
+    s.add("strings", "fluid", program=49, gain_db=-12, sends={"hall": 0.45}, humanize=0.012, hp=110)
+    s.add("violins", "fluid", program=48, gain_db=-11, sends={"hall": 0.45}, humanize=0.01, channel=1, hp=180)
+    s.add("cello", "fluid", program=42, gain_db=-15, sends={"hall": 0.35}, humanize=0.01, channel=2, hp=45)
+    s.add("choir", "fluid", program=53, gain_db=-15, sends={"space": 0.45}, channel=3, hp=180)
+    s.add("horn", "fluid", program=60, gain_db=-15, sends={"hall": 0.5}, humanize=0.01, channel=4, hp=90)
+    s.add("solo", "synth", voice=ins.v_lead, gain_db=-9, sends={"hall": 0.35, "delay": 0.25}, hp=200,
+          voice_kw={"bright": 0.35, "release": 0.7})
+    s.add("bells", "synth", voice=ins.v_bell, gain_db=-16, sends={"space": 0.45, "delay": 0.3}, hp=400,
+          voice_kw={"ratio": 2.0, "index": 1.2, "decay": 1.6})
+    s.add("shimmer", "synth", voice=ins.v_supersaw_pad, gain_db=-23, sends={"space": 0.5}, hp=1800,
+          voice_kw={"attack": 1.2, "release": 3.0, "cutoff": 7000, "detune": 12})
+    s.add("sub", "synth", voice=ins.v_sub, gain_db=-17)
+    s.add("kick", "drum", gain_db=-16, sends={"hall": 0.2})
+    s.add("shaker", "drum", gain_db=-21, sends={"hall": 0.25})
+    s.add("fx", "audio", gain_db=-19, sends={"space": 0.4})
+
+    s.master_env = [(0, -2.0), (s.bar(4), -1.0), (s.bar(12), 0.0), (s.bar(19), -0.5), (s.bar(20), -1.5),
+                    (s.bar(24), -2.0)]
+
+    # harmony beds
+    _chords_items(s, "pad", H, low=55, high=76, n_voices=4, vel=0.62)
+    _chords_items(s, "strings", _span(s, H, 4, 20), low=54, high=74, n_voices=4, vel=0.5)
+    s.automate("strings", [(0, -6), (s.bar(4), -6), (s.bar(6), 0), (s.bar(19), 0), (s.bar(20), -5)])
+    _chords_items(s, "choir", _span(s, H, 12, 20), low=57, high=72, n_voices=3, vel=0.55)
+    _chords_items(s, "shimmer", H, low=79, high=96, n_voices=3, vel=0.5)  # high, airy halo
+    _chords_items(s, "horn", _span(s, H, 12, 20), low=50, high=64, n_voices=3, vel=0.45)
+    for b, d, sym in _merge(H):
+        s.note("sub", b, d, _root(sym, 1, top=11), 0.7)
+    for b, d, sym in _merge(_span(s, H, 4, 20)):
+        s.note("cello", b, d, _root(sym, 3, top=4), 0.55)
+    # e-piano: slow 8th arpeggios throughout, the reflective "thinking" layer
+    for b, d, sym in H:
+        pcs = parse_chord(sym)
+        pool = [m for m in range(62, 62 + 25) if m % 12 in {(pcs[0] + i) % 12 for i in pcs[1]}]
+        seq = pool[:6] + pool[4:0:-1]
+        for k in range(int(d * 2)):
+            s.note("ep", b + k * 0.5, 0.9, seq[k % len(seq)], 0.5 if k % 4 == 0 else 0.38)
+    s.automate("ep", [(0, 0), (s.bar(11.5), 0), (s.bar(12.5), -3), (s.bar(19.5), -3), (s.bar(20.5), 0)])
+
+    # intro: the motif head as distant glass bells
+    s.melody("bells", s.bar(0), "B5:1 F#6:3 | G6:.5 F#6:.5 E6:1 D6:2 | r:4 | r:4", vel=0.55)
+    # A: the title theme in B minor on a mellow synth lead
+    s.melody("solo", s.bar(4), THEME_BMIN, vel=0.72, legato=0.97)
+    # B: hopeful string line in D major, horn & choir warmth
+    s.melody("violins", s.bar(12), B_BMIN, vel=0.66)
+    # outro: the motif head once more, fading into the loop
+    s.melody("solo", s.bar(20), "B4:1 F#5:3 | G5:.5 F#5:.5 E5:1 D5:2 | E5:4 | F#5:2 A#4:2", vel=0.55, legato=0.97)
+    s.automate("solo", [(0, 0), (s.bar(19.9), 0), (s.bar(20), -3), (s.bar(24), -3)])
+    s.melody("bells", s.bar(12), "r:4 | r:4 | r:4 | B5:1 F#6:3 | r:4 | r:4 | r:4 | r:2 A#5:.5 C#6:1.5", vel=0.4)
+
+    # gentle heartbeat pulse + shaker in the B section
+    drum_pattern(s, "kick", "kick", "x.......o.......", 4, 16, tone=44, punch=0.4, decay=0.5, click=0.3)
+    drum_pattern(s, "shaker", "shaker", "..g...o...g...o.", 12, 8)
+    s.clip("fx", s.bar(11), ins.fx_reverse_swell(s.bt(4), s.rng))
+    s.clip("fx", s.bar(23), ins.fx_reverse_swell(s.bt(4), s.rng))
+    return s
+
+
 SONGS = {"title": title_theme, "map": map_theme, "combat_space": combat_space, "combat_planet": combat_planet,
          "docking": docking_theme, "gameover": gameover_theme, "enemy": enemy_system_theme}
+SONGS.update({"victory": victory_theme, "debrief": debrief_theme})  # added later
 
 
 def main(which):

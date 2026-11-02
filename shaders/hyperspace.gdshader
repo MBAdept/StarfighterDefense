@@ -7,6 +7,7 @@ uniform float flash = 0.0;
 uniform float fade = 0.0;
 uniform float aspect = 1.7778;
 uniform vec3 tint = vec3(0.55, 0.8, 1.0);
+uniform vec3 flash_color = vec3(1.0, 1.0, 1.0);   // Farbe der Blende (rot beim Sprung ins Feindsystem)
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 
@@ -40,7 +41,7 @@ void fragment() {
 	col += tint * 0.35 * intensity * smoothstep(0.9, 0.0, r) * (0.6 + 0.4 * sin(r * 40.0 - TIME * 30.0));
 	col += vec3(1.0) * pow(smoothstep(0.5, 0.0, r), 2.0) * intensity * 0.8;
 	float a = clamp(max(s, intensity * 0.55) * fade, 0.0, 1.0);
-	col = mix(col, vec3(1.0, 1.0, 1.0), flash);
+	col = mix(col, flash_color, flash);
 	a = max(a, flash);
 	// Hintergrund abdunkeln, damit die Streifen tragen
 	vec3 bg = vec3(0.0, 0.01, 0.03);

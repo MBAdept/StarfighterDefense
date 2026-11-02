@@ -5,7 +5,7 @@ extends Node3D
 ##  Treffer am Spieler, HUD, Nachbearbeitung, Einfrieren beim Öffnen der Karte.
 ## =============================================================================================
 
-enum Weapon { LASER, ION }
+enum Weapon { LASER, ION, BOMB }
 
 var camera: Camera3D
 var world_env: WorldEnvironment
@@ -22,6 +22,7 @@ var weapon := Weapon.LASER
 var weapon_manual := Weapon.LASER
 var laser_cd := 0.0
 var ion_cd := 0.0
+var bomb_cd := 0.0
 var aim_target: Enemy = null
 var locked := false
 var turn_norm := 0.0              ## 0..1 aktuelle Lenkintensität (Ausweichen)
@@ -43,8 +44,13 @@ var _lock_beep_t := 0.0
 var _lock_beeped: Enemy = null
 var _death_cb: Callable
 var _death_t := 0.0
+var _death_reason := "energy"   ## "energy" = eigenes Schiff zerstört, "cities" = Helion gefallen (Schiff intakt)
 var _last_lock_target: Enemy = null
 var _incoming_warn_t := 0.0
+var victory_mode := false
+var _victory_cb: Callable
+var _victory_t := 0.0
+var _unfreeze_frame := -1     ## Bild, in dem die Karte geschlossen wurde (Feuer dieses Bildes gilt der Karte)
 
 
 static func dir_from_angles(yaw: float, pitch: float) -> Vector3:
@@ -107,8 +113,14 @@ func set_frozen(f: bool) -> void:
 	if f:
 		Audio.stop_all_loops(0.15)
 	else:
+		_unfreeze_frame = Engine.get_process_frames()
 		Audio.loop_start("engine", "engine_loop", 0.0, 0.5)
 		_on_unfrozen()
+
+
+## Feuer-Tastendruck dieses Bildes – außer er hat gerade die Karte geschlossen (sonst fiele eine Bombe).
+func _fire_just_pressed() -> bool:
+	return Input.is_action_just_pressed("fire") and Engine.get_process_frames() != _unfreeze_frame
 
 
 func _on_unfrozen() -> void:
@@ -123,6 +135,8 @@ func _process(delta: float) -> void:
 		_update_death(delta)
 		_update_post(delta)
 		return
+	if victory_mode:
+		_update_victory(delta)
 	if controls_enabled:
 		_update_controls(delta)
 	_update_targeting()
@@ -187,8 +201,30 @@ func has_enemy_kind(k: int) -> bool:
 	return false
 
 
+## Bomben verfügbar? Nur über Feindplaneten (PlanetCombat im Feindsystem).
+func bombs_allowed() -> bool:
+	return false
+
+
+## Bombe abwerfen (PlanetCombat).
+func drop_bomb() -> void:
+	pass
+
+
 ## [FREI, Vorschlag automatisch] Waffe passend zum anvisierten Gegnertyp.
 func _select_weapon() -> void:
+	if bombs_allowed():
+		# [Vorgabe] über Feindplaneten wird manuell zwischen Bordlaser und Bomben gewechselt (Q/Tab/X)
+		var wb := Weapon.BOMB if weapon_manual == Weapon.BOMB else Weapon.LASER
+		if wb != weapon:
+			weapon = wb
+			hud.on_weapon_changed()
+		return
+	if weapon_manual == Weapon.BOMB:
+		weapon_manual = Weapon.LASER
+	if weapon == Weapon.BOMB:
+		weapon = Weapon.LASER   # Bomben nur über Feindplaneten (z. B. nach dem Sieg)
+		hud.on_weapon_changed()
 	if not Config.auto_weapon_switch:
 		weapon = weapon_manual
 		return
@@ -208,10 +244,22 @@ func _update_weapons(delta: float) -> void:
 	var was_ready := ion_cd <= 0.0
 	laser_cd -= delta
 	ion_cd -= delta
+	bomb_cd -= delta
 	if not was_ready and ion_cd <= 0.0:
 		Audio.sfx("ion_ready", 0.0)
 	_select_weapon()
 	if not fire_enabled or not controls_enabled:
+		return
+	if weapon == Weapon.BOMB:
+		if _fire_just_pressed():
+			if GameState.bombs <= 0:
+				Audio.sfx("bomb_empty" if Audio.has_sound("bomb_empty") else "ui_error", -4.0, 1.0, 0.0, "UI")
+				hud.show_message("KEINE BOMBEN MEHR", "Nachladen nur beim Andocken an eigenen Stationen", 2.2, UITheme.AMBER, true)
+			elif bomb_cd > 0.0:
+				Audio.ui("ui_error", -10.0)
+			else:
+				bomb_cd = Config.bomb_cooldown
+				drop_bomb()
 		return
 	if weapon == Weapon.LASER:
 		if Input.is_action_pressed("fire") and laser_cd <= 0.0:
@@ -221,7 +269,7 @@ func _update_weapons(delta: float) -> void:
 			Audio.sfx("laser", 0.0, 1.0, 0.05, "SFX", 3)
 			shake = maxf(shake, 0.05)
 	else:
-		if Input.is_action_just_pressed("fire"):
+		if _fire_just_pressed():
 			if ion_cd <= 0.0:
 				ion_cd = Config.ion_cooldown
 				shots.fire_ion(camera.global_position, -camera.global_transform.basis.z)
@@ -233,6 +281,22 @@ func _update_weapons(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if dying or victory_mode:
+		return
+	if event.is_action_pressed("switch_weapon") and bombs_allowed():
+		weapon_manual = Weapon.LASER if weapon == Weapon.BOMB else Weapon.BOMB
+		_select_weapon()
+		var snd := "weapon_bombs" if weapon == Weapon.BOMB else "weapon_laser"
+		if Audio.has_sound(snd):
+			Audio.sfx(snd, -2.0, 1.0, 0.0, "UI")
+		else:
+			Audio.ui("ui_select")
+		if weapon == Weapon.BOMB:
+			if GameState.bombs > 0:
+				hud.show_message("BOMBEN SCHARF", "%d an Bord · Aufschlagmarke auf eine Stadt, dann FEUER" % GameState.bombs, 1.6, UITheme.AMBER, true)
+			else:
+				hud.show_message("KEINE BOMBEN MEHR", "Nachladen nur beim Andocken an eigenen Stationen", 1.8, UITheme.AMBER, true)
+		return
 	if event.is_action_pressed("switch_weapon"):
 		if Config.auto_weapon_switch:
 			hud.show_message("AUTOMATISCHE WAFFENWAHL AKTIV", "Umschalten in den Optionen", 1.6, UITheme.TEXT_DIM)
@@ -437,17 +501,66 @@ func destroy_city(_idx: int) -> void:
 
 
 # ---------------------------------------------------------------------------------------------
+#  Sieg: Heimatwelt des Feindes vernichtet – kurze Siegsequenz, danach Auswertung
+# ---------------------------------------------------------------------------------------------
+func play_victory_sequence(cb: Callable) -> void:
+	if dying or victory_mode:
+		return
+	victory_mode = true
+	_victory_cb = cb
+	_victory_t = 0.0
+	fire_enabled = false
+	Audio.stop_all_loops(1.0)
+	Audio.play_music("victory_theme" if Audio.has_music("victory_theme") else "title_theme", 1.2)
+	Audio.sfx("planet_saved", 2.0)
+	var home := GameState.enemy_home()
+	hud.show_message("SIEG!", "%s ist gefallen – das %s-System ist gerettet!" % [home.name if home else "Die Heimatwelt", GameState.STAR_NAME], 7.0, UITheme.GREEN)
+	location_sub = "SIEG"
+	hint_text = "Auswertung folgt …"
+	# verbliebene Gegner ziehen sich zurück (ohne Punkte/Statistik)
+	for e in enemies.duplicate():
+		if is_instance_valid(e) and e.alive:
+			e.alive = false
+			Effects.warp_in(fx_root, e.global_position, 6.0 if e.kind == Enemy.Kind.FIGHTER else 20.0, Color(1.0, 0.4, 0.6))
+			e.queue_free()
+	enemies.clear()
+	shots.clear_all()
+
+
+func _update_victory(delta: float) -> void:
+	_victory_t += delta
+	if fmod(_victory_t, 0.6) < delta and _victory_t < 5.0:
+		var dir := (-camera.global_transform.basis.z).rotated(Vector3.UP, randf_range(-0.6, 0.6))
+		var at := camera.global_position + Vector3(dir.x, 0.0, dir.z).normalized() * randf_range(200.0, 520.0)
+		at.y = randf_range(4.0, 40.0)
+		Effects.explosion(fx_root, at, randf_range(18.0, 34.0), Color(1.0, 0.45, 0.7), false)
+		Audio.sfx_3d("explosion_large", self, at, 0.0, 0.1, 2, 400.0)
+	if _victory_t > 7.5 and _victory_cb.is_valid():
+		var cb := _victory_cb
+		_victory_cb = Callable()
+		cb.call()
+
+
+# ---------------------------------------------------------------------------------------------
 #  Eigene Zerstörung (Energie 0)
 # ---------------------------------------------------------------------------------------------
-func play_death_sequence(cb: Callable) -> void:
+func play_death_sequence(cb: Callable, reason := "energy") -> void:
 	if dying:
 		return
 	dying = true
 	_death_cb = cb
 	_death_t = 0.0
+	_death_reason = reason
 	controls_enabled = false
 	fire_enabled = false
 	Audio.stop_all_loops(1.5)
+	if reason == "cities":
+		# [ORIGINAL] verloren, wenn alle Städte zerstört sind – das eigene Schiff bleibt dabei heil
+		hud.show_message("%s GEFALLEN" % GameState.STAR_NAME.to_upper(), "Alle Städte des %s-Systems sind zerstört" % GameState.STAR_NAME, 4.0, UITheme.RED)
+		Audio.sfx("city_destroyed", 0.0, 0.8)
+		flash = 0.4
+		flash_color = Color(0.6, 0.1, 0.1)
+		return
 	Audio.sfx("player_hit_heavy", 4.0, 0.8)
 	Audio.sfx("explosion_large", 4.0, 0.7, 0.0, "SFX", 2)
 	hud.show_message("ENERGIE ERSCHÖPFT", "Das Schiff verliert die Kontrolle …", 4.0, UITheme.RED)
@@ -458,6 +571,12 @@ func play_death_sequence(cb: Callable) -> void:
 
 func _update_death(delta: float) -> void:
 	_death_t += delta
+	if _death_reason != "energy":
+		if _death_t > 3.2 and _death_cb.is_valid():
+			var cb0 := _death_cb
+			_death_cb = Callable()
+			cb0.call()
+		return
 	shake = maxf(shake, 1.2 - _death_t * 0.2)
 	noise_lines = 1.0
 	aberr = 1.0

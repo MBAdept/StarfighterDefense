@@ -177,6 +177,9 @@ func _project(w: Vector3) -> Dictionary:
 
 # --- Zielanzeige ------------------------------------------------------------------------------
 func _draw_crosshair(vp: Vector2) -> void:
+	if combat.weapon == CombatBase.Weapon.BOMB:
+		_draw_bomb_sight(vp)
+		return
 	var c := (vp * 0.5).round()
 	var lock := combat.locked
 	var appear := clampf(_weapon_t * 5.0, 0.0, 1.0)
@@ -214,6 +217,45 @@ func _draw_crosshair(vp: Vector2) -> void:
 		draw_arc(c, r + 12.0, -PI * 0.5, -PI * 0.5 + TAU * ch, 64, Color(ring_col, 0.85 * appear), 4.0, true)
 		if ch < 1.0:
 			_text(c + Vector2(r + 22.0, -r - 8.0), "%.1f s" % ((1.0 - ch) * Config.ion_cooldown), _f_mono, 20, Color(UITheme.AMBER, appear))
+
+
+## Bombenvisier: Flugbahn als Punktreihe bis zur Aufschlagmarke (die Marke selbst liegt in 3D am Boden).
+func _draw_bomb_sight(vp: Vector2) -> void:
+	var pc := combat as PlanetCombat
+	if pc == null:
+		return
+	var c := (vp * 0.5).round()
+	var appear := clampf(_weapon_t * 5.0, 0.0, 1.0)
+	var empty := GameState.bombs <= 0
+	var locked := pc.impact_city >= 0 and not pc.impact_pending
+	var col := Color(0.6, 0.6, 0.65) if empty else (UITheme.GREEN if locked else UITheme.AMBER)
+	col.a = appear
+	_glow_line(c + Vector2(-30, 0), c + Vector2(-12, 0), col, 2.0)
+	_glow_line(c + Vector2(30, 0), c + Vector2(12, 0), col, 2.0)
+	_glow_line(c + Vector2(0, 12), c + Vector2(0, 26), col, 2.0)
+	var pts: Array = pc.bomb_trajectory(16)
+	for i in pts.size():
+		var pr := _project(pts[i])
+		if pr.front:
+			draw_circle(pr.pos, 3.2 - i * 0.1, Color(col, appear * (0.2 + 0.65 * float(i) / pts.size())), true, -1.0, true)
+	var mp := _project(pc.impact_point)
+	var screen := Rect2(Vector2(0, 0), vp - Vector2(0, 190))
+	var under_scanner: bool = mp.front and (mp.pos as Vector2).distance_to(Vector2(vp.x * 0.5, vp.y - 150.0)) < 150.0
+	if mp.front and screen.has_point(mp.pos) and not under_scanner:
+		var txt := ""
+		if empty:
+			txt = "KEINE BOMBEN"
+		elif pc.impact_pending:
+			txt = "BOMBE UNTERWEGS"
+		elif pc.impact_city >= 0:
+			txt = "ZIEL: " + String(pc.planet.city_names[pc.impact_city]).to_upper()
+		else:
+			txt = "%d m" % int(Vector2(pc.impact_point.x, pc.impact_point.z).distance_to(pc.player_xz()))
+		_text(mp.pos + Vector2(46, 8), txt, _f_disp, 20, col)
+		if locked and not empty and fmod(_t, 0.5) < 0.35:
+			_text(c + Vector2(-200, 74), "ABWURF: FEUER", _f_disp, 22, col, HORIZONTAL_ALIGNMENT_CENTER, 400)
+	else:
+		_text(c + Vector2(-300, 120), "AUFSCHLAG UNTER DEM SCHIFF – VORWÄRTS FLIEGEN", _f_body, 22, col, HORIZONTAL_ALIGNMENT_CENTER, 600)
 
 
 func _draw_target_marker(_vp: Vector2) -> void:
@@ -425,9 +467,14 @@ func _draw_energy(o: Vector2, _vp: Vector2) -> void:
 func _draw_weapon(o: Vector2, w: float, compact: bool) -> void:
 	var laser := combat.weapon == CombatBase.Weapon.LASER
 	var flash := clampf(1.0 - _weapon_t * 2.0, 0.0, 1.0)
+	var mode := "AUTO" if Config.auto_weapon_switch else "MANUELL (Q)"
+	if combat.bombs_allowed():
+		mode = "MANUELL (Q)"
+	if combat.weapon == CombatBase.Weapon.BOMB:
+		_draw_bomb_weapon(o, w, compact, flash, mode)
+		return
 	var name := "BORDLASER" if laser else "IONEN-KANONE"
 	var col := UITheme.CYAN if laser else Color(0.85, 0.78, 1.0)
-	var mode := "AUTO" if Config.auto_weapon_switch else "MANUELL (Q)"
 	if compact:
 		_text(o + Vector2(0, 18), "WAFFE · " + mode, _f_disp, 16, Color(UITheme.CYAN, 0.7))
 		_text(o + Vector2(0, 52), name, _f_disp, 26, col.lerp(Color(1, 1, 1), flash))
@@ -442,13 +489,36 @@ func _draw_weapon(o: Vector2, w: float, compact: bool) -> void:
 		for i in 12:
 			var r := Rect2(Vector2(bx + i * bw / 12.0, bar_y), Vector2(bw / 12.0 - 3.0, 12))
 			draw_rect(r, Color(col, 0.75 - 0.5 * heat * float(i % 2)))
-		_text(Vector2(bx, bar_y + 34), "gegen Fighter · Dauerfeuer", _f_body, 18, Color(UITheme.TEXT_DIM, 0.9))
+		var sub := "gegen Fighter · Dauerfeuer"
+		if combat.bombs_allowed():
+			sub = "gegen Fighter · Q: Bomben (%d)" % GameState.bombs
+		_text(Vector2(bx, bar_y + 34), sub, _f_body, 18, Color(UITheme.TEXT_DIM, 0.9))
 	else:
 		var ch := combat.ion_charge()
 		draw_rect(Rect2(Vector2(bx, bar_y), Vector2(bw, 12)), Color(col, 0.15))
 		draw_rect(Rect2(Vector2(bx, bar_y), Vector2(bw * ch, 12)), UITheme.GREEN if ch >= 1.0 else UITheme.AMBER)
 		var st := "BEREIT" if ch >= 1.0 else "LÄDT  %.1f s" % ((1.0 - ch) * Config.ion_cooldown)
 		_text(Vector2(bx, bar_y + 34), st + " · gegen Zerstörer/Flaggschiff", _f_body, 18, Color(UITheme.TEXT_DIM, 0.9))
+
+
+func _draw_bomb_weapon(o: Vector2, w: float, compact: bool, flash: float, mode: String) -> void:
+	var col := UITheme.AMBER
+	var empty := GameState.bombs <= 0
+	_text(o + Vector2(0, 18), "WAFFE · " + mode, _f_disp, 16, Color(UITheme.CYAN, 0.7))
+	_text(o + Vector2(0, 52), "BOMBEN", _f_disp, 26, col.lerp(Color(1, 1, 1), flash))
+	_text(o + Vector2(0, 52), "%d / %d" % [GameState.bombs, Config.bombs_max], _f_mono, 26, UITheme.RED if empty else col, HORIZONTAL_ALIGNMENT_RIGHT, w * 0.9)
+	var bar_y := o.y + (66.0 if compact else 72.0)
+	var bw := w * 0.9
+	var n := maxi(Config.bombs_max, 1)
+	var pw := bw / n
+	for i in n:
+		var r := Rect2(Vector2(o.x + i * pw, bar_y), Vector2(pw - 3.0, 12))
+		if i < GameState.bombs:
+			draw_rect(r, Color(col, 0.9))
+		else:
+			draw_rect(r, Color(col, 0.35), false, 1.0)
+	var st := "LEER – Nachladen an Station" if empty else ("BEREIT · Abwurf mit FEUER · Q: Laser" if combat.bomb_cd <= 0.0 else "LÄDT … · Q: Laser")
+	_text(Vector2(o.x, bar_y + 34), st, _f_body, 18, Color(UITheme.RED if empty else UITheme.TEXT_DIM, 0.9))
 
 
 func _draw_status(o_right: Vector2, _vp: Vector2, _planet: bool) -> void:
@@ -471,7 +541,7 @@ func _draw_status(o_right: Vector2, _vp: Vector2, _planet: bool) -> void:
 	var lines := []
 	if combat is SpaceCombat:
 		var sc: SpaceCombat = combat
-		if sc.mode == SpaceCombat.Mode.ORBIT and not sc.orbit_done:
+		if (sc.mode == SpaceCombat.Mode.ORBIT and not sc.orbit_done) or (sc.mode == SpaceCombat.Mode.RECEPTION and sc.phase == SpaceCombat.Phase.FIGHTERS):
 			lines.append(["FIGHTER", "%d / %d" % [sc.orbit_total - sc.orbit_killed, sc.orbit_total], UITheme.FIGHTER_COLOR])
 		elif sc.squadron and sc.squadron.state != SquadronData.State.DESTROYED and not sc.is_docking():
 			lines.append(["FIGHTER", "%d" % sc.squadron.fighters, UITheme.FIGHTER_COLOR])
@@ -479,6 +549,11 @@ func _draw_status(o_right: Vector2, _vp: Vector2, _planet: bool) -> void:
 				lines.append(["ZERSTÖRER", _destroyer_string(sc.squadron), UITheme.AMBER])
 		if fl:
 			lines.append(["FLAGGSCHIFF", "AKTIV", UITheme.PINK])
+	elif combat is PlanetCombat and (combat as PlanetCombat).enemy_mode:
+		var ep: PlanetCombat = combat
+		lines.append(["FEINDSTÄDTE", "%d / %d" % [ep.planet.alive_cities(), ep.planet.cities.size()], Color(1.0, 0.4, 0.62)])
+		lines.append(["VERTEIDIGER", "%d" % ep.planet.defenders, UITheme.FIGHTER_COLOR if ep.planet.defenders > 0 else UITheme.GREEN])
+		lines.append(["BOMBEN", "%d / %d" % [GameState.bombs, Config.bombs_max], UITheme.AMBER if GameState.bombs > 0 else UITheme.RED])
 	elif combat is PlanetCombat:
 		var pc: PlanetCombat = combat
 		lines.append(["STÄDTE", "%d / %d" % [pc.planet.alive_cities(), pc.planet.cities.size()], UITheme.CYAN])
@@ -536,9 +611,23 @@ func _draw_docking(vp: Vector2) -> void:
 	if not sc.is_docking():
 		return
 	var w := 620.0
-	var o := Vector2((vp.x - w) * 0.5, vp.y - 330.0)
-	draw_rect(Rect2(o, Vector2(w, 120)), Color(0.02, 0.06, 0.1, 0.8))
-	draw_rect(Rect2(o, Vector2(w, 120)), Color(UITheme.CYAN, 0.6), false, 2.0)
+	var bombs := Config.enemy_system_enabled
+	var h := 160.0 if bombs else 120.0
+	var o := Vector2((vp.x - w) * 0.5, vp.y - 330.0 - (h - 120.0))
+	draw_rect(Rect2(o, Vector2(w, h)), Color(0.02, 0.06, 0.1, 0.8))
+	draw_rect(Rect2(o, Vector2(w, h)), Color(UITheme.CYAN, 0.6), false, 2.0)
+	if bombs:
+		# [Vorgabe] Bomben werden nur an eigenen Stationen aufgefüllt
+		_text(o + Vector2(24, 136), "BOMBEN", _f_disp, 18, Color(UITheme.AMBER, 0.9))
+		_text(o + Vector2(w - 24 - 200, 138), "%d / %d" % [GameState.bombs, Config.bombs_max], _f_mono, 24, UITheme.AMBER, HORIZONTAL_ALIGNMENT_RIGHT, 200)
+		var bn := maxi(Config.bombs_max, 1)
+		var bpw := 300.0 / bn
+		for i in bn:
+			var r := Rect2(o + Vector2(140 + i * bpw, 122), Vector2(bpw - 3.0, 18))
+			if i < GameState.bombs:
+				draw_rect(r, Color(UITheme.AMBER, 0.9))
+			else:
+				draw_rect(r, Color(UITheme.AMBER, 0.3), false, 1.0)
 	var title := "ANDOCKEN …"
 	match sc.phase:
 		SpaceCombat.Phase.DOCK_CLAMP:
@@ -585,6 +674,13 @@ func _draw_scanner(c: Vector2, r: float) -> void:
 			p = p.normalized() * (r - 4.0)
 		var alive: bool = pc.planet.cities[i]
 		var under := pc.city_under_attack(i)
+		if pc.enemy_mode and alive:
+			# Feindstadt (Ziel)
+			var tgt := pc.impact_city == i and not pc.impact_pending and GameState.bombs > 0
+			var ec := UITheme.GREEN if tgt else Color(1.0, 0.32, 0.58)
+			draw_circle(c + p, 5.0, ec, true, -1.0, true)
+			draw_arc(c + p, 8.5, 0, TAU, 20, Color(ec, 0.55), 1.5, true)
+			continue
 		if not alive:
 			var q := c + p
 			draw_line(q - Vector2(4, 4), q + Vector2(4, 4), Color(0.5, 0.5, 0.55, 0.8), 2.0)
@@ -596,6 +692,14 @@ func _draw_scanner(c: Vector2, r: float) -> void:
 		else:
 			draw_circle(c + p, 4.5, Color(0.5, 1.0, 1.0), true, -1.0, true)
 			draw_circle(c + p, 8.0, Color(UITheme.CYAN, 0.18), true, -1.0, true)
+	# Aufschlagpunkt der Bombe (Bombenmodus)
+	if pc.enemy_mode and pc.weapon == CombatBase.Weapon.BOMB:
+		var ip := _scan(Vector2(pc.impact_point.x, pc.impact_point.z), center_world, yaw, heading_up, sc)
+		if ip.length() < r - 2.0:
+			var icol := UITheme.GREEN if pc.impact_city >= 0 and not pc.impact_pending and GameState.bombs > 0 else UITheme.AMBER
+			draw_line(c + ip - Vector2(6, 0), c + ip + Vector2(6, 0), icol, 2.0)
+			draw_line(c + ip - Vector2(0, 6), c + ip + Vector2(0, 6), icol, 2.0)
+			draw_arc(c + ip, Config.bomb_hit_radius * sc, 0, TAU, 20, Color(icol, 0.6), 1.0, true)
 	# eigenes Schiff
 	var sp := _scan(ppos, center_world, yaw, heading_up, sc)
 	var ang := 0.0 if heading_up else -yaw

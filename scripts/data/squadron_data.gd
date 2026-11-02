@@ -2,8 +2,8 @@ class_name SquadronData
 extends RefCounted
 ## Zustand eines feindlichen Schwadrons.  [ORIGINAL] 3–12 Fighter, 1–3 Zerstörer, eventuell 1 Flaggschiff
 
-enum State { TRANSIT, LANDED, AT_STATION, DESTROYED }
-enum TargetKind { PLANET, STATION }
+enum State { TRANSIT, LANDED, AT_STATION, DESTROYED, WAITING }
+enum TargetKind { PLANET, STATION, GATE }   ## GATE = Sprungpunkt des Feindsystems ins Helion-System
 
 var id := 0
 var name := ""
@@ -19,6 +19,8 @@ var level := 0
 var stop_clock := 0.0           ## [VERMUTET] Takt für "bleibt zeitweise stehen"
 var group_city := -1            ## Stadt, um die sich das Schwadron auf dem Planeten gruppiert
 var spawn_time := 0.0
+var system := 0                 ## 0 = Helion-System, 1 = Feindsystem (auf dem Weg zum Sprungpunkt)
+var origin := ""                ## Startplanet im Feindsystem (Anzeige)
 
 
 func strength() -> float:

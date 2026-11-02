@@ -68,6 +68,24 @@ DESC = {
 VOL = {"laser_1": -3, "laser_2": -3, "laser_3": -3, "engine_loop": -6, "alarm_station": -3, "bombard_loop": -2,
        "flagship_charge_loop": 0, "near_miss": -2, "target_lock": -2, "refuel_tick": 0}
 
+# added later: bomb weapon, enemy home world, long hyperjump, victory / debrief music
+LOOPS |= {"victory_theme", "debrief_theme"}
+DESC.update({
+    "bomb_release": "Bombe ausklinken (Haken-Klick + Rack-Klonk + pneumatisches Zischen)",
+    "bomb_fall": "Fallende Bombe (absteigendes Pfeifen, leicht Sci-Fi; verklungen bei ~1.4 s, Einschlag ~1.3 s)",
+    "bomb_impact": "Bombeneinschlag (harter Knall, tiefer Schlag, Erd-/Trümmerregen, rollendes Grollen + Geländeechos)",
+    "alien_city_destroyed": "Feindstadt zerstört (Detonation, Kristall-Splittern, subharmonisches Ächzen, Glitzern; Stereo)",
+    "weapon_bombs": "Waffe auf Bomben (Servo-Surren + Verriegelungsklick)",
+    "weapon_laser": "Waffe auf Laser (kurzes Energie-Aufsirren)",
+    "bomb_empty": "Keine Bomben mehr (trockener Klick + kurzes Brummen)",
+    "hyperjump_long": "Langer Sprung (düsterer, rotverschobener Aufbau; Knall/Woosh exakt bei 3.75 s = Weißblitz; Stereo)",
+    "hyperjump_arrive_long": "Ankunft nach langem Sprung (tiefer Boom + Braam, Woosh L->R, nachklingende Hülle; Stereo)",
+    "victory_theme": "Sieg, D-Dur, 100 BPM, heroisch-orchestral (Motiv als Fanfare, Marsch, Streicher-B-Teil, "
+                     "Tutti-Klimax mit bVI-bVII-I, Coda)",
+    "debrief_theme": "Einsatzauswertung (abgebrochen), H-Moll, 72 BPM, ruhig-nachdenklich (Titelthema verlangsamt, "
+                     "E-Piano, Streicher-B-Teil in D-Dur)",
+})
+
 
 def row(path, is_music):
     x, sr = sf.read(path)
@@ -127,7 +145,15 @@ def main():
               "(AudioStreamPlayer3D) während des Bombardements.",
               "- **gameover_theme** endet sauber (Fade am Ende), nicht loopen.",
               "- `combat_space`/`combat_planet` beginnen mit einem 4-taktigen Intro und enden mit einem Turnaround, "
-              "der nahtlos ins Intro zurückführt; Crossfades beim Zustandswechsel ~1 s.", ""]
+              "der nahtlos ins Intro zurückführt; Crossfades beim Zustandswechsel ~1 s.",
+              "- **hyperjump_long** beim Start des langen Sprungs (3x `jump_duration`) spielen: Knall/Woosh exakt bei "
+              "3.75 s (Weißblitz/Szenenwechsel), danach kurzes Ausklingen bis 4.6 s. `hyperjump_arrive_long` beim "
+              "Szenenwechsel (~3.75 s) starten – beide sind aufeinander abgestimmt (Aufbau/Riss bzw. tiefer Boom).",
+              "- **bomb_release** und **bomb_fall** gleichzeitig beim Abwurf; `bomb_fall` ist bei ~1.4 s verklungen, "
+              "`bomb_impact` beim Einschlag (~1.3 s) spielen. `weapon_bombs`/`weapon_laser` beim Waffenwechsel, "
+              "`bomb_empty` bei Abwurfversuch ohne Bomben.",
+              "- **victory_theme** (-14 LUFS) und **debrief_theme** (-15 LUFS wie die anderen ruhigen Stücke) sind "
+              "nahtlose Loops.", ""]
     out = os.path.join(ROOT, "tools", "AUDIO_REPORT.md")
     open(out, "w").write("\n".join(lines))
     print("written", out)

@@ -138,11 +138,11 @@ func _tune_materials(root: Node) -> void:
 				_mat_cache[key] = true
 				var bm := mat as BaseMaterial3D
 				var n := String(bm.resource_name)
-				if n.begins_with("Hull") or n.begins_with("Structure"):
+				if n.begins_with("Hull") or n.begins_with("Structure") or n.begins_with("AlienHull"):
 					bm.rim_enabled = true
 					bm.rim = 0.35
 					bm.rim_tint = 0.6
-				if n.begins_with("Glow") and bm.emission_enabled:
+				if (n.begins_with("Glow") or n.begins_with("AlienGlow")) and bm.emission_enabled:
 					bm.emission_energy_multiplier = clampf(bm.emission_energy_multiplier, 1.5, 4.0)
 
 

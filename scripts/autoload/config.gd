@@ -212,9 +212,47 @@ var bonus_orbit_cleared := 250          ## [FREI]
 var highscore_entries := 10             ## [FREI]
 
 # ---------------------------------------------------------------------------------------------
-#  Feindsystem (Platzhalter)
+#  Feindsystem  (Sprungpunkt oben links auf der Karte)
 # ---------------------------------------------------------------------------------------------
-var enemy_system_enabled := false       ## Sprungpunkt sichtbar, aber "in Vorbereitung"
+var enemy_system_enabled := true        ## [FREI] false = Sprungpunkt nur sichtbar, Schwadrone entstehen direkt am Sprungpunkt (wie 0.9)
+var enemy_jump_cost := 20.0             ## [FREI, Vorgabe] Sprung ins Feindsystem und zurück kostet je 20 % Energie
+var enemy_jump_duration_factor := 3.0   ## [FREI, Vorgabe] dieser Sprung dauert 3× so lange (roter Hyperraum)
+var enemy_city_count_min := 6           ## [FREI, Vorgabe] die 4 äußeren Feindplaneten haben 6–8 Städte …
+var enemy_city_count_max := 8           ## [FREI, Vorgabe]
+var enemy_home_city_count := 12         ## [FREI, Vorgabe] … die feindliche Heimatwelt 12
+var enemy_city_points := 5000           ## [FREI, Vorgabe] Punkte je zerbombter Feindstadt
+## Empfangskomitee bei JEDEM Sprung ins Feindsystem: nur Fighter (keine Zerstörer/Flaggschiffe)
+var reception_fighter_count := 12       ## [FREI, Vorgabe] 12 Fighter = 4 Wellen à 3
+var reception_fire_rate_factor := 2.0   ## [FREI, Vorschlag] deutlich aggressiver: doppelte Feuerrate …
+var reception_burst_shots := 2          ## [FREI, Vorschlag] … und Doppelschuss je Feuerstoß
+## Verteidiger der Feindstädte: fester Bestand je Planet, Wellen à fighters_per_wave, KEINE Regeneration
+var enemy_defenders_min := 9            ## [FREI, Vorschlag] äußere Planeten 9–12 Fighter
+var enemy_defenders_max := 12           ## [FREI, Vorschlag]
+var enemy_home_defenders := 18          ## [FREI, Vorschlag] Heimatwelt 18 Fighter
+var enemy_defender_fire_rate_factor := 1.5   ## [FREI] Verteidiger schießen etwas häufiger als normale Fighter
+var enemy_defender_burst_shots := 1     ## [FREI] Schüsse je Feuerstoß der Verteidiger
+var enemy_home_fire_rate_factor := 1.5  ## [FREI] dasselbe für die Verteidiger der Heimatwelt (z. B. 2.0 = wie Empfangskomitee)
+var enemy_home_burst_shots := 1         ## [FREI] (2 = Doppelschuss)
+## Schwadron-Produktion: Schwadrone starten sichtbar von äußeren Planeten mit intakten Städten und fliegen
+## zum Sprungpunkt ins Helion-System. Jede zerstörte Stadt auf einem äußeren Planeten verlangsamt die Produktion,
+## ohne Städte auf den äußeren Planeten kommt kein neues Schwadron mehr (Heimatwelt produziert nicht).
+var enemy_production_slowdown := 0.15   ## [FREI, Vorgabe "spürbar langsamer"] Abstand neuer Schwadrone +15 % je zerstörter Stadt
+var enemy_system_max_squadrons := 3     ## [FREI] höchstens so viele Schwadrone gleichzeitig im Feindsystem unterwegs
+var enemy_transit_speed_factor := 2.5   ## [FREI] im eigenen System fliegen Schwadrone schneller (Transit zum Sprungpunkt)
+var enemy_first_launch := 25.0          ## [FREI] erster Start im Feindsystem nach Beginn der Kampagne (s)
+var bonus_victory := 0                  ## [später] Siegbonus/Militär-Rang – wird nach den Tests festgelegt
+
+# ---------------------------------------------------------------------------------------------
+#  Bomben  (nur auf Feindplaneten; Waffenwechsel Bordlaser ↔ Bomben manuell mit Q/Tab/X)
+# ---------------------------------------------------------------------------------------------
+var bombs_max := 15                     ## [FREI, Vorgabe] 15 Bomben; Auffüllen nur beim Andocken an eigenen Stationen
+var bomb_cooldown := 0.9                ## [FREI] Mindestabstand zweier Abwürfe (s)
+var bomb_gravity := 22.0                ## [FREI] Fallbeschleunigung (m/s², arcadehaft)
+var bomb_drop_speed := 4.0              ## [FREI] Anfangsgeschwindigkeit nach unten (m/s)
+var bomb_forward_speed := 38.0          ## [FREI] Vorwärtsimpuls zusätzlich zur Fluggeschwindigkeit → Aufschlag sichtbar vor dem Schiff
+var bomb_hit_radius := 22.0             ## [FREI, Vorgabe "1 Treffer je Stadt"] Treffer, wenn der Aufschlag so nah an der Stadtmitte liegt (m); Fehlwurf = Bombe verloren
+var bomb_refill_time := 0.25            ## [FREI] s je Bombe beim Andocken (parallel zum Tanken)
+var bomb_camera_pitch := -14.0          ## [FREI] Blick im Bombenmodus nach unten (Grad), damit die Aufschlagmarke auch im Stand über dem Scanner liegt
 
 # ---------------------------------------------------------------------------------------------
 #  Darstellung (keine Spiellogik)

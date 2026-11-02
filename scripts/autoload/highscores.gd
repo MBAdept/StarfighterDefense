@@ -58,7 +58,7 @@ func qualifies(score: int) -> bool:
 
 
 ## Fügt einen Eintrag hinzu und gibt den Rang (0-basiert) zurück, -1 wenn nicht in der Liste.
-func add(player_name: String, score: int, level: int, play_time: float) -> int:
+func add(player_name: String, score: int, level: int, play_time: float, won := false) -> int:
 	var d := Time.get_datetime_dict_from_system()
 	var e := {
 		"name": player_name.strip_edges().substr(0, 12),
@@ -66,6 +66,7 @@ func add(player_name: String, score: int, level: int, play_time: float) -> int:
 		"date": "%02d.%02d.%04d" % [d.day, d.month, d.year],
 		"level": level,
 		"time": int(play_time),
+		"won": won,
 	}
 	entries.append(e)
 	_sort()

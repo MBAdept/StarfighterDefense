@@ -134,6 +134,11 @@ static func build() -> Theme:
 
 
 ## Großer Titel-Label mit Schatten/Glow.
+## "1 Stadt" / "n Städte"
+static func cities_text(n: int) -> String:
+	return "%d Stadt" % n if n == 1 else "%d Städte" % n
+
+
 static func title_label(text: String, size := 72, color := CYAN) -> Label:
 	var l := Label.new()
 	l.text = text

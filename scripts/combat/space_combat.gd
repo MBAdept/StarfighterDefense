@@ -6,10 +6,11 @@ extends CombatBase
 ##   SQUADRON  – Schwadron im All: erst Fighter (Wellen), dann Zerstörer nacheinander, ggf. Flaggschiff
 ##   STATION   – Raumstation: ggf. Verteidigung (nur Fighter) [ORIGINAL], danach Andocken + Tanken
 ##   EMPTY     – leerer Raum (nach Vernichtung eines Schwadrons)
+##   RECEPTION – Ankunft im Feindsystem: Empfangskomitee aus 12 aggressiven Fightern (4 Wellen), danach Ruhe
 ##  Steuerung [ORIGINAL]: links/rechts/rauf/runter, kein Rollen, keine freie Rotation.
 ## =============================================================================================
 
-enum Mode { ORBIT, SQUADRON, STATION, EMPTY }
+enum Mode { ORBIT, SQUADRON, STATION, EMPTY, RECEPTION }
 enum Phase { IDLE, FIGHTERS, DESTROYERS, DONE, DOCK_APPROACH, DOCK_CLAMP, REFUEL, DOCKED }
 
 var mode := Mode.EMPTY
@@ -37,8 +38,11 @@ var bg_planet: Node3D = null
 var dock_t := 0.0
 var dock_from := Vector3.ZERO
 var refuel_t := 0.0
+var bomb_t := 0.0
 var _cam_center_from := Vector2.ZERO
 var _done_handled := false
+var arrival_home := false
+var arrival_note := ""
 var _sun_dir := Vector3(0.4, 0.3, -1.0)
 
 
@@ -63,10 +67,24 @@ static func create_station(st: StationData) -> SpaceCombat:
 	return s
 
 
-static func create_empty() -> SpaceCombat:
+## arrival_home = true: Ankunft nach dem Rücksprung aus dem Feindsystem (Sprungpunkt oben links)
+## note: Hinweis bei der Ankunft (z. B. Ziel-Schwadron ist inzwischen weitergesprungen)
+static func create_empty(arrival_home := false, note := "") -> SpaceCombat:
 	var s := SpaceCombat.new()
 	s.mode = Mode.EMPTY
+	s.arrival_home = arrival_home
+	s.arrival_note = note
 	return s
+
+
+static func create_reception() -> SpaceCombat:
+	var s := SpaceCombat.new()
+	s.mode = Mode.RECEPTION
+	return s
+
+
+func in_enemy_system() -> bool:
+	return GameState.player_system == 1
 
 
 func _ready() -> void:
@@ -93,6 +111,8 @@ func _ready() -> void:
 		Mode.SQUADRON:
 			location_name = squadron.name.to_upper()
 			location_sub = "Kurs auf " + GameState.squadron_target_name(squadron)
+			if squadron.system == 1:
+				location_sub = "Feindsystem · %s" % ("wartet am Sprungpunkt" if squadron.state == SquadronData.State.WAITING else "Kurs auf den Sprungpunkt nach " + GameState.STAR_NAME)
 			_start_squadron_fight(true)
 		Mode.STATION:
 			location_name = station.name.to_upper()
@@ -104,24 +124,44 @@ func _ready() -> void:
 			else:
 				_start_docking()
 		Mode.EMPTY:
-			location_name = "TIEFRAUM"
+			location_name = "TIEFRAUM" if not in_enemy_system() else "FEINDSYSTEM %s" % GameState.ENEMY_STAR_NAME.to_upper()
 			location_sub = "Keine Feindkontakte"
+			if arrival_note != "":
+				hud.show_message("ZIEL VERFEHLT", arrival_note, 3.0, UITheme.AMBER)
+			if arrival_home:
+				location_sub = "Sprungpunkt · zurück im %s-System" % GameState.STAR_NAME
+				hud.show_message("%s-SYSTEM" % GameState.STAR_NAME.to_upper(), "Rücksprung abgeschlossen · Bomben gibt es beim Andocken an Stationen", 3.5, UITheme.CYAN)
 			hint_text = "LEERTASTE: Systemkarte"
 			phase = Phase.DONE
+		Mode.RECEPTION:
+			location_name = "FEINDSYSTEM %s" % GameState.ENEMY_STAR_NAME.to_upper()
+			orbit_total = Config.reception_fighter_count
+			if orbit_total <= 0:
+				_reception_done(false)
+			else:
+				location_sub = "Sprungpunkt · EMPFANGSKOMITEE!"
+				hint_text = "Erst die Fighter abwehren  ·  LEERTASTE: Karte (nur Rücksprung)"
+				phase = Phase.FIGHTERS
+				wave_timer = 2.2
+				hud.show_message("EMPFANGSKOMITEE!", "%d Fighter – sie schießen deutlich aggressiver" % orbit_total, 3.2, UITheme.RED)
+				Audio.alarm(-6.0)
 
 
 func music_track() -> String:
+	var calm := "enemy_system_theme" if in_enemy_system() else "map_theme"
 	match mode:
 		Mode.STATION:
 			return "combat_space" if phase == Phase.FIGHTERS else "docking_theme"
 		Mode.EMPTY:
-			return "map_theme"
+			return calm
 		Mode.ORBIT:
 			return "combat_space" if not orbit_done else "map_theme"
+		Mode.RECEPTION:
+			return "combat_space" if phase == Phase.FIGHTERS else calm
 	# Schwadron: Kampfmusik nur, solange gekämpft wird (bzw. ein Flaggschiff noch da ist)
 	if phase != Phase.DONE or _flagship_alive():
 		return "combat_space"
-	return "map_theme"
+	return calm
 
 
 func _flagship_alive() -> bool:
@@ -138,7 +178,8 @@ func map_allowed() -> bool:
 
 func on_map_denied() -> void:
 	Audio.ui("ui_error")
-	hud.show_message("KARTE GESPERRT", "Erst die Angreifer im Orbit vernichten!", 1.8, UITheme.AMBER)
+	if mode == Mode.ORBIT and not orbit_done and not dying:
+		hud.show_message("KARTE GESPERRT", "Erst die Angreifer im Orbit vernichten!", 1.8, UITheme.AMBER)
 
 
 # =============================================================================================
@@ -146,12 +187,15 @@ func on_map_denied() -> void:
 # =============================================================================================
 func _build_world() -> void:
 	var my_pos := GameState.player_map_pos
+	var enemy_sys := in_enemy_system()
 	if mode == Mode.SQUADRON and squadron:
 		my_pos = squadron.map_pos
 	elif mode == Mode.STATION and station:
 		my_pos = station.map_pos()
 	elif mode == Mode.ORBIT:
 		my_pos = GameState.home_planet().map_pos()
+	elif mode == Mode.RECEPTION:
+		my_pos = GameState.ENEMY_GATE
 	# Richtung zur Sonne aus der Kartenposition (Karte x → Welt x, Karte y → Welt z)
 	_sun_dir = Vector3(-my_pos.x, 0.0, -my_pos.y)
 	if _sun_dir.length() < 1.0:
@@ -163,6 +207,12 @@ func _build_world() -> void:
 	sky.shader = load("res://shaders/space_sky.gdshader")
 	var variant_b := mode == Mode.SQUADRON and squadron != null and squadron.id % 2 == 0
 	var pano := Assets.tex("sky/space_panorama_b.png" if variant_b else "sky/space_panorama.png")
+	if enemy_sys:
+		# Feindsystem: eigener roter/violetter Himmel (sonst eingefärbte Variante)
+		pano = Assets.tex("sky/space_panorama_enemy.png")
+		if pano == null:
+			pano = Assets.tex("sky/space_panorama_b.png")
+			sky.set_shader_parameter("tint", Vector3(1.3, 0.6, 0.8))
 	if pano == null:
 		pano = Assets.tex("sky/space_panorama.png")
 	if pano:
@@ -172,8 +222,12 @@ func _build_world() -> void:
 	var ang := clampf(30.0 / dist_star, 0.04, 0.3)   # scheinbarer Sonnenradius (Grad)
 	sky.set_shader_parameter("sun_size", cos(deg_to_rad(ang)))
 	sky.set_shader_parameter("sun_intensity", clampf(260.0 / dist_star, 0.5, 2.5))
-	make_environment(sky, Color(0.22, 0.27, 0.38), 0.55)
-	make_sun(_sun_dir, Color(1.0, 0.94, 0.85), clampf(1.0 + 120.0 / dist_star, 1.2, 2.4))
+	if enemy_sys:
+		make_environment(sky, Color(0.34, 0.2, 0.26), 0.55)
+		make_sun(_sun_dir, Color(1.0, 0.62, 0.48), clampf(1.0 + 120.0 / dist_star, 1.2, 2.4))   # roter Stern Vorrhal
+	else:
+		make_environment(sky, Color(0.22, 0.27, 0.38), 0.55)
+		make_sun(_sun_dir, Color(1.0, 0.94, 0.85), clampf(1.0 + 120.0 / dist_star, 1.2, 2.4))
 	_build_dust()
 	match mode:
 		Mode.ORBIT:
@@ -242,14 +296,15 @@ func _planet_material(p: PlanetData) -> ShaderMaterial:
 	m.set_shader_parameter("has_clouds", has_clouds)
 	if clouds:
 		m.set_shader_parameter("clouds_tex", clouds)
-	if p.type == "volcanic":
-		var e := Assets.tex("planets/volcanic_emission.png")
-		if e:
-			m.set_shader_parameter("emission_tex", e)
-			m.set_shader_parameter("has_emission", true)
+	var etex := Assets.tex("planets/%s_emission.png" % p.type) if p.type in ["volcanic", "alien_ash", "alien_home"] else null
+	if etex:
+		m.set_shader_parameter("emission_tex", etex)
+		m.set_shader_parameter("has_emission", true)
 	m.set_shader_parameter("atmo_color", PlanetLook.atmosphere(p.type))
 	m.set_shader_parameter("sun_dir", _sun_dir)
 	m.set_shader_parameter("night_light_strength", 1.6 if p.is_home else 0.0)
+	if p.is_enemy:
+		m.set_shader_parameter("night_lights", Color(1.0, 0.25, 0.55))   # Lichter der Feindstädte: magenta
 	m.set_shader_parameter("night_noise", Effects.noise_texture())
 	m.set_shader_parameter("spin", float(p.id) * 0.13)
 	return m
@@ -288,7 +343,7 @@ func _build_planet(p: PlanetData, radius: float, center: Vector3) -> void:
 func _build_distant_planet(my_pos: Vector2) -> void:
 	var best: PlanetData = null
 	var bd := INF
-	for p in GameState.planets:
+	for p in (GameState.enemy_planets if in_enemy_system() else GameState.planets):
 		var d: float = p.map_pos().distance_to(my_pos)
 		if d < bd and d > 1.0:
 			bd = d
@@ -380,7 +435,7 @@ func _fighters_alive() -> int:
 
 
 func _fighters_to_spawn() -> int:
-	if mode == Mode.ORBIT:
+	if mode == Mode.ORBIT or mode == Mode.RECEPTION:
 		return orbit_total - orbit_spawned
 	if squadron == null:
 		return 0
@@ -405,15 +460,20 @@ func _spawn_wave() -> void:
 	var n := mini(Config.fighters_per_wave, _fighters_to_spawn())
 	wave += 1
 	var total_waves := 0
-	if mode == Mode.ORBIT:
+	var counted := mode == Mode.ORBIT or mode == Mode.RECEPTION
+	if counted:
 		total_waves = ceili(float(orbit_total) / Config.fighters_per_wave)
 	var cb := camera.global_transform.basis
 	for i in n:
 		var f := Fighter.new()
-		f.setup(self, squadron if mode != Mode.ORBIT else null)
+		f.setup(self, squadron if not counted else null)
+		if mode == Mode.RECEPTION:
+			# [Vorgabe] deutlich aggressiver: doppelte Feuerrate und Doppelschuss
+			f.fire_rate_factor = Config.reception_fire_rate_factor
+			f.burst_shots = Config.reception_burst_shots
 		var local := Vector3(randf_range(-55, 55) + (i - 1) * 30.0, randf_range(-12, 28), -randf_range(170, 230))
 		add_enemy(f, camera.global_position + cb * local)
-		if mode == Mode.ORBIT:
+		if counted:
 			orbit_spawned += 1
 	Audio.sfx("wave_incoming", -2.0)
 	var title := "WELLE %d" % wave + (" / %d" % total_waves if total_waves > 0 else "")
@@ -446,6 +506,22 @@ func _fighters_cleared() -> void:
 			# Squadron wurde von GameState vernichtet (alle Fighter weg) → Andocken
 			phase = Phase.DONE
 			_after_station_defense()
+		Mode.RECEPTION:
+			_reception_done(true)
+
+
+## Empfangskomitee abgewehrt: Ruhe am Ankunftspunkt bis zum nächsten Sprung ins Feindsystem.
+func _reception_done(fought: bool) -> void:
+	if phase == Phase.DONE and not GameState.reception_active:
+		return
+	phase = Phase.DONE
+	GameState.reception_active = false
+	location_sub = "Sprungpunkt gesichert"
+	hint_text = "LEERTASTE: Feindkarte – Planeten anfliegen, Schwadrone abfangen"
+	if fought:
+		hud.show_message("EMPFANGSKOMITEE ABGEWEHRT", "Ruhe am Sprungpunkt · LEERTASTE: Feindkarte", 4.5, UITheme.GREEN)
+		Audio.sfx("squadron_destroyed")
+	Audio.play_music(music_track(), 3.0)
 
 
 func _start_squadron_fight(intro: bool) -> void:
@@ -517,7 +593,7 @@ func _spawn_destroyer(dd: DestroyerData) -> void:
 	add_enemy(d, camera.global_position + dir_from_angles(d.anchor_yaw, d.anchor_pitch) * d.dist)
 	var col: Color = UITheme.DESTROYER_COLORS[dd.color]
 	hud.show_message("ZERSTÖRER (%s)" % UITheme.DESTROYER_NAMES[dd.color].to_upper(),
-		("◀ LINKS" if side > 0.0 else "RECHTS ▶") + "  ·  %d Treffer nötig" % dd.hits_left, 2.2, col)
+		("<< LINKS" if side > 0.0 else "RECHTS >>") + "  ·  %d Treffer nötig" % dd.hits_left, 2.2, col)
 
 
 func _spawn_flagship() -> void:
@@ -539,7 +615,7 @@ func _half_hfov() -> float:
 
 func _on_enemy_removed(e: Enemy) -> void:
 	if e.kind == Enemy.Kind.FIGHTER:
-		if mode == Mode.ORBIT:
+		if mode == Mode.ORBIT or mode == Mode.RECEPTION:
 			orbit_killed += 1
 			GameState.on_fighter_killed(null)
 		else:
@@ -563,7 +639,7 @@ func _on_squadron_destroyed(sq: SquadronData) -> void:
 		return   # wird in _after_station_defense behandelt
 	phase = Phase.DONE
 	hint_text = "LEERTASTE: Systemkarte"
-	location_name = "TIEFRAUM"
+	location_name = "TIEFRAUM" if not in_enemy_system() else "FEINDSYSTEM %s" % GameState.ENEMY_STAR_NAME.to_upper()
 	location_sub = "Schwadron vernichtet"
 	hud.show_message("SCHWADRON VERNICHTET", "+%d Bonus" % Config.bonus_squadron_destroyed, 3.5, UITheme.GREEN)
 	Audio.sfx("squadron_destroyed")
@@ -582,7 +658,8 @@ func _start_station_defense() -> void:
 	wave_timer = 1.8
 	location_sub = "WIRD ANGEGRIFFEN!"
 	hud.show_message("STATION WIRD ANGEGRIFFEN!", "%d Fighter – nur Fighter greifen Stationen an" % squadron.fighters, 2.8, UITheme.RED)
-	Audio.play_music("combat_space")
+	if not frozen:
+		Audio.play_music("combat_space")   # bei offener Karte übernimmt close_map() die Musik
 	controls_enabled = true
 	fire_enabled = true
 
@@ -645,29 +722,46 @@ func _update_docking(delta: float) -> void:
 			if dock_t > 0.9:
 				phase = Phase.REFUEL
 				refuel_t = 0.0
-				if GameState.energy >= Config.energy_max - 0.01:
+				bomb_t = 0.0
+				if _refuel_complete():
 					_refuel_done()
 				else:
-					hud.show_message("TANKEN", "Energie wird aufgefüllt", 1.5, UITheme.CYAN)
+					var what := "Energie wird aufgefüllt"
+					if GameState.bombs < Config.bombs_max:
+						what = "Energie und Bomben werden aufgefüllt" if GameState.energy < Config.energy_max - 0.01 else "Bomben werden geladen"
+					hud.show_message("TANKEN", what, 1.5, UITheme.CYAN)
 		Phase.REFUEL:
 			# [ORIGINAL] ca. 10 % pro Sekunde, sichtbar in 5-%-Schritten
 			refuel_t += delta
 			var step_time := Config.refuel_step / Config.refuel_rate
-			while refuel_t >= step_time and phase == Phase.REFUEL:
+			while refuel_t >= step_time and phase == Phase.REFUEL and GameState.energy < Config.energy_max - 0.01:
 				refuel_t -= step_time
 				var before := GameState.energy
 				var target_e := minf(Config.energy_max, floorf(GameState.energy / Config.refuel_step + 0.001) * Config.refuel_step + Config.refuel_step)
 				GameState.change_energy(target_e - before)
 				GameState.stats.energy_refueled += target_e - before
 				Audio.sfx("refuel_tick", 0.0, 0.9 + GameState.energy / Config.energy_max * 0.4)
-				if GameState.energy >= Config.energy_max - 0.01:
-					_refuel_done()
+			# [Vorgabe] Bomben werden – wie Energie – nur an eigenen Stationen aufgefüllt
+			bomb_t += delta
+			while bomb_t >= Config.bomb_refill_time and GameState.bombs < Config.bombs_max:
+				bomb_t -= Config.bomb_refill_time
+				GameState.refill_bomb()
+				Audio.sfx("refuel_tick", -3.0, 1.35)
+			if _refuel_complete():
+				_refuel_done()
+
+
+func _refuel_complete() -> bool:
+	return GameState.energy >= Config.energy_max - 0.01 and (GameState.bombs >= Config.bombs_max or not Config.enemy_system_enabled)
 
 
 func _refuel_done() -> void:
 	phase = Phase.DOCKED
 	Audio.sfx("refuel_complete", 0.0)
-	hud.show_message("ENERGIE 100 %", "Reparatur abgeschlossen · LEERTASTE: Systemkarte", 4.0, UITheme.GREEN)
+	var sub := "Reparatur abgeschlossen · LEERTASTE: Systemkarte"
+	if Config.enemy_system_enabled:
+		sub = "%d Bomben an Bord · LEERTASTE: Systemkarte" % GameState.bombs
+	hud.show_message("ENERGIE 100 %", sub, 4.0, UITheme.GREEN)
 	location_sub = "Angedockt"
 
 
@@ -679,6 +773,14 @@ func is_docking() -> bool:
 #  Tests
 # =============================================================================================
 func debug_finish_orbit() -> void:
+	if mode == Mode.RECEPTION and phase == Phase.FIGHTERS:
+		for e in enemies.duplicate():
+			if is_instance_valid(e):
+				e.queue_free()
+		enemies.clear()
+		orbit_spawned = orbit_total
+		_fighters_cleared()
+		return
 	if mode != Mode.ORBIT or orbit_done:
 		return
 	for e in enemies.duplicate():

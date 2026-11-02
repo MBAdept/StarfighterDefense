@@ -4,7 +4,8 @@ extends CanvasLayer
 
 var hyper: ColorRect
 var black: ColorRect
-var _tween: Tween
+var _tween: Tween          ## Hyperraumsprung
+var _fade_tween: Tween     ## Abblenden
 
 
 func _ready() -> void:
@@ -42,35 +43,47 @@ func cancel_hyperjump() -> void:
 
 ## Abblenden → mid() → Aufblenden
 func fade(mid: Callable, out_time := 0.4, in_time := 0.5) -> void:
-	if _tween:
-		_tween.kill()
+	# eigener Tween: ein Hyperraumsprung darf eine laufende Blende nicht abbrechen (sonst bliebe Schwarz stehen)
+	if _fade_tween:
+		_fade_tween.kill()
 	black.mouse_filter = Control.MOUSE_FILTER_STOP
-	_tween = create_tween()
-	_tween.tween_property(black, "color:a", 1.0, out_time)
-	_tween.tween_callback(mid)
-	_tween.tween_interval(0.05)
-	_tween.tween_property(black, "color:a", 0.0, in_time)
-	_tween.tween_callback(func(): black.mouse_filter = Control.MOUSE_FILTER_IGNORE)
+	_fade_tween = create_tween()
+	_fade_tween.tween_property(black, "color:a", 1.0, out_time)
+	_fade_tween.tween_callback(mid)
+	_fade_tween.tween_interval(0.05)
+	_fade_tween.tween_property(black, "color:a", 0.0, in_time)
+	_fade_tween.tween_callback(func(): black.mouse_filter = Control.MOUSE_FILTER_IGNORE)
+
+
+const TINT_NORMAL := Vector3(0.55, 0.8, 1.0)
+const TINT_ENEMY := Vector3(1.0, 0.24, 0.16)   ## [Vorgabe] roter Hyperraum beim Sprung zwischen den Systemen
 
 
 ## Hyperraumsprung: Streifen beschleunigen, Weißblitz (Szenenwechsel), Ankunft.
-func hyperjump(mid: Callable, done: Callable = Callable()) -> void:
+## long = Sprung zwischen Helion- und Feindsystem: Config.enemy_jump_duration_factor × so lang, rot.
+func hyperjump(mid: Callable, done: Callable = Callable(), long := false) -> void:
 	if _tween:
 		_tween.kill()
-	var d := Config.jump_duration
+	var d := Config.jump_duration * (Config.enemy_jump_duration_factor if long else 1.0)
 	var vp := get_viewport().get_visible_rect().size
 	_set_param("aspect", vp.x / maxf(vp.y, 1.0))
 	_set_param("intensity", 0.0)
 	_set_param("flash", 0.0)
 	_set_param("fade", 0.0)
+	(hyper.material as ShaderMaterial).set_shader_parameter("tint", TINT_ENEMY if long else TINT_NORMAL)
+	(hyper.material as ShaderMaterial).set_shader_parameter("flash_color", Vector3(1.0, 0.55, 0.45) if long else Vector3(1.0, 1.0, 1.0))
 	hyper.visible = true
-	Audio.sfx("hyperjump", -1.0)
+	if long:
+		Audio.sfx("hyperjump_long" if Audio.has_sound("hyperjump_long") else "hyperjump", -1.0, 1.0 if Audio.has_sound("hyperjump_long") else 0.62)
+	else:
+		Audio.sfx("hyperjump", -1.0)
+	var arrive := "hyperjump_arrive_long" if long and Audio.has_sound("hyperjump_arrive_long") else "hyperjump_arrive"
 	_tween = create_tween()
 	_tween.tween_method(func(v): _set_param("fade", v), 0.0, 1.0, d * 0.15)
 	_tween.parallel().tween_method(func(v): _set_param("intensity", v), 0.0, 1.0, d * 0.62).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	_tween.tween_method(func(v): _set_param("flash", v), 0.0, 1.0, d * 0.12)
 	_tween.tween_callback(mid)
-	_tween.tween_callback(func(): Audio.sfx("hyperjump_arrive", -2.0))
+	_tween.tween_callback(func(): Audio.sfx(arrive, -2.0, 1.0 if arrive != "hyperjump_arrive" or not long else 0.8))
 	_tween.tween_interval(0.06)
 	_tween.tween_method(func(v): _set_param("flash", v), 1.0, 0.0, d * 0.3)
 	_tween.parallel().tween_method(func(v): _set_param("intensity", v), 0.7, 0.0, d * 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)

@@ -317,6 +317,15 @@ func has_loop(key: String) -> bool:
 	return _loops.has(key)
 
 
+## Gibt es den Effekt (assets/audio/sfx/<name>.wav/.ogg)? Für optionale Klänge mit Ersatz.
+func has_sound(sound_name: String) -> bool:
+	return _stream(SFX_DIR, sound_name) != null
+
+
+func has_music(track: String) -> bool:
+	return _stream(MUSIC_DIR, track) != null
+
+
 func stop_all_loops(fade := 0.3) -> void:
 	for k in _loops.keys():
 		loop_stop(k, fade)

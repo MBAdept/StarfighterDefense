@@ -882,6 +882,460 @@ def engine_loop(rng):
     return middle_period(x, P, R)
 
 
+# =============================================================================================
+# BOMBS, ALIEN CITY, LONG HYPERJUMP  (added later for the bomb weapon and the enemy home world)
+#   bomb_release, bomb_fall, bomb_impact, alien_city_destroyed, weapon_bombs, weapon_laser,
+#   bomb_empty, hyperjump_long, hyperjump_arrive_long
+# (registered after all older sounds, so a full re-render of the older ones is unaffected)
+# =============================================================================================
+from numba import njit  # noqa: E402
+from scipy.ndimage import minimum_filter1d, uniform_filter1d  # noqa: E402
+
+from synthlib import cents  # noqa: E402
+
+
+def _unit(x):
+    """peak-normalise a layer to 1.0 (keeps the layer balances below readable)"""
+    m = np.max(np.abs(x))
+    return x / m if m > 1e-12 else x
+
+
+def _struck(rng, n, freqs, decays, gains, exc_tau=0.002):
+    """struck metal: a short noise burst through a modal resonator bank (peak-normalised)"""
+    exc = white(n, rng) * exp_decay(n, exc_tau)
+    return _unit(resonator_bank(exc, freqs, decays, gains))
+
+
+def _grains(rng, n, count, t0, spread, fmin, fmax, glen=(0.004, 0.03), q=(0.8, 2.5), skew=(1.3, 2.6),
+            fade_tau=None):
+    """granular debris: many tiny band-passed noise grains (dirt, gravel, rubble – no metal)"""
+    out = np.zeros(n)
+    for _ in range(count):
+        on = t0 + spread * rng.beta(*skew)
+        g = rng.uniform(*glen)
+        m = ns(g * 5)
+        fc = float(np.exp(rng.uniform(np.log(fmin), np.log(fmax))))
+        grain = svf(white(m, rng) * exp_decay(m, g, attack=0.0008), fc, rng.uniform(*q), "bp")
+        amp = rng.uniform(0.15, 1.0) ** 2
+        if fade_tau:
+            amp *= np.exp(-(on - t0) / fade_tau)
+        mix_into(out, grain * amp, ns(on))
+    return out
+
+
+def _shards(rng, n, count, spread, fmin, fmax, dec=(0.04, 0.3), skew=2.2, width=0.9, t0=0.0,
+            ratios=(1.0, 2.32, 4.25)):
+    """glass shards: short inharmonic partial clusters (plate modes) with staggered onsets, spread in stereo"""
+    out = np.zeros((n, 2))
+    for _ in range(count):
+        f = float(np.exp(rng.uniform(np.log(fmin), np.log(fmax))))
+        on = t0 + spread * rng.random() ** skew
+        d = rng.uniform(*dec)
+        m = ns(d * 2.2)
+        tt = tarr(m)
+        part = np.zeros(m)
+        for j, r in enumerate(ratios):
+            fr = f * r * rng.uniform(0.985, 1.015)
+            if fr > 17500:
+                continue
+            part += np.sin(2 * np.pi * fr * tt + rng.random() * 6) * np.exp(-6.9 * tt * (1 + 0.7 * j) / d) / (1 + j)
+        part *= 1 - np.exp(-tt / 0.0004)
+        g = rng.uniform(0.25, 1.0) * np.exp(-(on - t0) / max(spread * 0.45, 1e-3))
+        mix_into(out, pan(part * g, rng.uniform(-width, width)), ns(on))
+    return out
+
+
+def _chimes(rng, n, notes, start, spread, dec=(0.5, 1.1), width=0.8):
+    """crystalline FM chimes, one per note, cascading over `spread` seconds"""
+    out = np.zeros((n, 2))
+    k = len(notes)
+    for i, m in enumerate(notes):
+        on = start + spread * (i / max(1, k - 1)) ** 1.25 + rng.uniform(-0.015, 0.015)
+        d = rng.uniform(*dec)
+        mm = ns(d * 2)
+        tt = tarr(mm)
+        f = midi_to_hz(m)
+        c = fm(f, mm, 3.5, 1.5 * np.exp(-tt / 0.07) + 0.12) * np.exp(-6.9 * tt / d)
+        c += 0.3 * np.sin(2 * np.pi * f * 2.76 * tt) * np.exp(-6.9 * tt / (d * 0.3))
+        c *= 1 - np.exp(-tt / 0.0006)
+        mix_into(out, pan(c * rng.uniform(0.6, 1.0), rng.uniform(-width, width)), ns(max(0.0, on)))
+    return out
+
+
+@njit(cache=True)
+def _gain_release(g, coef):
+    out = np.empty_like(g)
+    s = 1.0
+    for i in range(g.shape[0]):
+        s = s + (1.0 - s) * coef
+        if g[i] < s:
+            s = g[i]
+        out[i] = s
+    return out
+
+
+def tp_guard(x, ceiling_db=-1.0, look_ms=1.5, release_ms=30.0, view=None):
+    """true-peak safety for the newer sounds: 4x-oversampled look-ahead gain riding that only acts where the
+    reconstructed waveform would exceed the ceiling (level and character elsewhere untouched).
+    view: optional function giving the signal as it will finally be heard (peaks are detected on view(x))"""
+    v = view or (lambda z: z)
+    d = v(x)
+    if true_peak(d) <= ceiling_db:
+        return x
+    k = 4
+    up = sps.resample_poly(d, k, 1, axis=0)
+    a = np.abs(up) if up.ndim == 1 else np.abs(up).max(axis=1)
+    g = np.minimum(1.0, db(ceiling_db - 0.2) / np.maximum(a, 1e-12))
+    w = max(1, int(look_ms * 1e-3 * SR * k))
+    g = minimum_filter1d(g, 2 * w + 1, mode="nearest")
+    g = uniform_filter1d(g, w + 1, mode="nearest")  # smooth attack; stays <= the needed gain
+    g = _gain_release(g, 1.0 - np.exp(-1.0 / (release_ms * 1e-3 * SR * k)))
+    g = g[::k][: x.shape[0]]
+    y = x * (g if x.ndim == 1 else g[:, None])
+    tp = true_peak(v(y))
+    if tp > ceiling_db:
+        y = y * db(ceiling_db - tp)
+    return y
+
+
+def _premaster(x, name, headroom=1.0):
+    """normalise to the sound's own ST-RMS target and catch the peaks with the clean look-ahead limiter above,
+    leaving `headroom` dB below its peak ceiling – finish() then lands on the intended loudness without the
+    pedalboard limiter having to squash the whole sound"""
+    target = REGISTRY[name][1]
+    ceiling = PEAK_MAX.get(name, -1.0) - headroom
+    for _ in range(3):
+        # peaks are detected on the DC-filtered signal finish() will produce (its phase shift on the deep sub
+        # moves the peaks by up to ~3 dB)
+        x = tp_guard(x * db(target - short_term_max(x)), ceiling, look_ms=2.0, release_ms=80.0,
+                     view=lambda z: remove_dc(z, 12.0))
+    return x
+
+
+@sfx("bomb_release", -14)
+def bomb_release(rng):
+    """ka-CHUNK + pfff: the release hook snaps, the rack recoils as the bomb's mass drops away, the ejector vents"""
+    n = ns(0.6)
+    # "ka": release hook snaps open – small, bright, very short
+    snap = _struck(rng, n, [1850, 2960, 4210, 5730, 7400], [0.035, 0.028, 0.022, 0.016, 0.012],
+                   [1.0, 0.85, 0.6, 0.4, 0.25], 0.0006)
+    snap = saturate(_unit(snap + svf(white(n, rng), 3000, 0.7, "hp") * exp_decay(n, 0.0015)), 2.5)
+    # "CHUNK": rack / ejector rams slam home – mid-heavy, short, solid metal
+    m = ns(0.5)
+    tt = tarr(m)
+    chunk = _struck(rng, m, [212, 347, 528, 761, 1043, 1392, 1880, 2540],
+                    [0.07, 0.065, 0.06, 0.052, 0.045, 0.04, 0.035, 0.03], [1.0, 0.95, 0.85, 0.7, 0.55, 0.4, 0.3, 0.2],
+                    0.004)
+    knock = _unit(svf(white(m, rng), 650, 1.0, "bp") * exp_decay(m, 0.018, attack=0.0005))
+    thump = sine(55 + 75 * np.exp(-tt / 0.012), m) * exp_decay(m, 0.045, attack=0.0008)
+    clunk = chunk + 0.6 * knock + 0.55 * thump
+    # "pfff": pneumatic ejector vents – hiss with a falling gas-jet whistle
+    h = ns(0.45)
+    th = tarr(h)
+    kh = np.clip(th / 0.3, 0, 1)
+    hiss = svf(white(h, rng), 6800 * (2600 / 6800) ** kh, 1.1, "bp") + 0.6 * svf(white(h, rng), 2200, 0.7, "hp")
+    jet = svf(white(h, rng), 4300 - 900 * kh, 7.0, "bp") * 1.5
+    hiss = _unit(hiss + jet) * env_points([(0, 0), (0.006, 1.0), (0.04, 0.7), (0.15, 0.25), (0.38, 0), (0.45, 0)],
+                                          h) ** 1.3
+    # latch spring resets
+    tick = _struck(rng, ns(0.15), [1730, 2890, 4410], [0.04, 0.03, 0.02], [1.0, 0.6, 0.4], 0.0008)
+    x = L(0.4 * snap, at(clunk, 0.014), at(0.42 * hiss, 0.028), at(0.25 * tick, 0.11))
+    x = saturate(x * 1.1, 1.4)
+    return _premaster(trim_tail(rev_mono(x, "room", 0.16), -60), "bomb_release")
+
+
+@sfx("bomb_fall", -17)
+def bomb_fall(rng):
+    """descending whistle with a light sci-fi sheen; gone by ~1.42 s (the impact follows at ~1.3 s)"""
+    n = ns(1.55)
+    t = tarr(n)
+    te = 1.42
+    k = np.clip(t / te, 0, 1)
+    f = 2450.0 * (560.0 / 2450.0) ** (k ** 0.9)  # Doppler: falls away from the fighter
+    flutter = 1 + 0.007 * np.sin(2 * np.pi * np.cumsum(4.5 + 10.0 * k) / SR)  # fins tumbling, speeding up
+    fw = f * flutter
+    whistle = sine(fw, n) + 0.18 * sine(2 * fw, n) + 0.06 * sine(3 * fw, n)
+    # sci-fi sheen: light FM shimmer + ring-modulated sidebands
+    shimmer = fm(fw, n, 0.5, 0.9) * 0.35
+    ring = sine(fw, n) * sine(83.0 + 40 * k, n) * 0.22
+    air = svf(white(n, rng), fw * 1.02, 5.0, "bp") * 1.3 + svf(white(n, rng), 1800 + 900 * (1 - k), 0.9, "bp") * 0.15
+    tone = whistle * 0.7 + shimmer + ring + air * 0.5
+    env = env_points([(0, 0), (0.015, 0.55), (0.3, 1.0), (0.7, 0.72), (1.05, 0.38), (1.3, 0.12), (te, 0.0),
+                      (1.55, 0.0)], n)
+    x = mono(chorus(tone * env, 0.9, 1.5, 6, 0.3))
+    return _premaster(rev_mono(x, "room", 0.18), "bomb_fall")
+
+
+@sfx("bomb_impact", -9.5)
+def bomb_impact(rng):
+    """close, heavy ground explosion: hard crack, deep thump, dirt/rubble rain, rolling rumble + terrain echoes"""
+    n = ns(3.4)
+    t = tarr(n)
+    # hard, close crack: a ~25 ms cluster of micro-cracks (shock front) – bright, unlike the muffled city_destroyed
+    crack = np.zeros(n)
+    for o, g in ((0.0, 1.0), (0.0037, 0.7), (0.0091, 0.55), (0.0163, 0.35)):
+        mix_into(crack, svf(white(n, rng), 1600, 0.6, "hp") * exp_decay(n, 0.005, attack=0.0002) * g, ns(o))
+    crack = _unit(crack + 0.7 * lp24(white(n, rng), 8000, 0.7) * exp_decay(n, 0.016, attack=0.0003))
+    # deep thump (ground shock)
+    fth = 31 + 125 * np.exp(-t / 0.045)
+    thump = sine(fth, n) * exp_decay(n, 0.42, attack=0.0015) + 0.35 * sine(2 * fth, n) * exp_decay(n, 0.12)
+    # fireball / dirt blast body
+    nz = pink(n, rng) * 0.7 + white(n, rng) * 0.3
+    body = lp24(nz, 320 + 4800 * np.exp(-t / 0.1) + 1500 * np.exp(-t / 0.6), 0.9)
+    body = _unit(body * exp_decay(n, 0.38, attack=0.002) * _turbulence(n, rng, 14, 0.4))
+    # dirt & rubble raining back down (granular, earthy)
+    dirt = _grains(rng, n, 420, 0.06, 2.0, 250, 4200, glen=(0.003, 0.025), skew=(1.4, 3.2), fade_tau=0.9)
+    rocks = _grains(rng, n, 36, 0.12, 1.6, 110, 600, glen=(0.015, 0.06), q=(1.5, 4.0), skew=(1.5, 3.0),
+                    fade_tau=0.8)
+    debris = _unit(dirt) * 0.8 + _unit(rocks) * 0.6
+    # rolling rumble + terrain echoes
+    roll = svf(brown(n, rng), 120, 0.7, "lp") * env_points([(0, 0), (0.15, 1), (0.9, 0.75), (1.6, 0.5), (3.4, 0)],
+                                                           n) ** 1.4
+    roll *= _turbulence(n, rng, 3, 0.55)
+    # rolling thunder: low-mid swells (audible on small speakers, not only sub)
+    swells = env_points([(0, 0), (0.25, 0.9), (0.55, 0.55), (0.8, 1.0), (1.15, 0.6), (1.45, 0.85), (1.9, 0.45),
+                         (2.3, 0.55), (3.4, 0)], n)
+    thunder = svf(pink(n, rng), 260 + 120 * np.exp(-t / 0.8), 0.9, "bp") * swells * _turbulence(n, rng, 6, 0.5)
+    core = 1.25 * crack + 1.0 * _unit(thump) + 1.0 * body
+    echo = np.zeros(n)
+    for dly, g, fc in ((0.31, 0.32, 1400), (0.68, 0.2, 800), (1.17, 0.12, 450), (1.74, 0.07, 300)):
+        mix_into(echo, butter(core, "lp", fc, 2) * g, ns(dly))
+    x = core + 0.65 * debris + 0.8 * _unit(roll) + 0.45 * _unit(thunder) + echo
+    x = saturate(x * 1.1, 1.6)
+    x = rev_mono(x, "hall", 0.18)
+    m = x.shape[0]
+    x *= macro(m, [(0, 0), (0.35, -2), (0.9, -7), (1.6, -12), (2.4, -19), (3.0, -28), (m / SR, -70)])
+    return _premaster(x, "bomb_impact")
+
+
+@sfx("alien_city_destroyed", -9.5, stereo_out=True)
+def alien_city_destroyed(rng):
+    """enemy city collapses: massive blast, crystalline shattering, subharmonic groan, glittering reward chimes"""
+    n = ns(4.6)
+    t = tarr(n)
+    x = np.zeros((n, 2))
+    # massive blast: partially decorrelated L/R cores + a short chain reaction
+    bl = ns(4.4)
+    b1 = _blast(rng, 4.4, 1.9, (90, 24), 1.15)
+    b2 = _blast(rng, 4.4, 1.9, (90, 24), 1.15)
+    benv = macro(bl, [(0, 0), (0.35, -2), (1.3, -9), (3.0, -20), (4.4, -45)])
+    mix_into(x, np.stack([0.72 * b1 + 0.28 * b2, 0.28 * b1 + 0.72 * b2], axis=1) * benv[:, None], 0)
+    for o, s, g, p in ((0.2, 1.3, 0.5, -0.6), (0.47, 1.4, 0.4, 0.55), (0.85, 1.2, 0.28, -0.25)):
+        b = _blast(rng, 3.6 - o, s, (75, 26), 0.9)
+        b *= macro(b.shape[0], [(0, 0), (0.25, -3), (1.0, -12), (b.shape[0] / SR, -45)])
+        mix_into(x, pan(b * g, p), ns(o))
+    sub = sine(22 + 70 * np.exp(-t / 0.3), n) * exp_decay(n, 1.1, attack=0.003)
+    x += stereo_sub(0.6 * sub)
+    # crystalline shattering: the alien spires burst like glass, shards keep tinkling down
+    shatter = _unit(_shards(rng, n, 170, 1.5, 1900, 11000, dec=(0.06, 0.4), skew=2.0))
+    tinkle = _unit(_shards(rng, n, 110, 2.8, 2500, 9000, dec=(0.05, 0.2), skew=1.0, t0=0.4))
+    glass_hiss = svf(white(n, rng), 6500, 0.8, "hp") * exp_decay(n, 0.15, attack=0.002)
+    x += 1.05 * shatter + 0.55 * tinkle + stereo_sub(0.35 * _unit(glass_hiss))
+    # subharmonic groan of the collapsing structure: low saws through a sinking vowel formant
+    tg = np.clip((t - 0.25) / 3.6, 0, 1)
+    f0 = 55.0 * (41.0 / 55.0) ** tg
+    src = saw(f0, n) + saw(f0 * cents(9), n) + 0.7 * saw(f0 * 1.5 * cents(-6), n)
+    vowel = 470 - 170 * tg
+    groan = svf(src, vowel, 3.0, "bp") + 0.6 * svf(src, vowel * 2.4, 4.0, "bp") + 0.35 * lp24(src, 160, 1.0)
+    groan = _unit(groan) + 0.5 * sine(f0 / 2, n)  # + subharmonic
+    groan *= env_points([(0, 0), (0.25, 0), (0.9, 1.0), (2.2, 0.75), (3.6, 0.3), (4.6, 0)], n) * \
+        _turbulence(n, rng, 9, 0.4)
+    x += stereo_sub(0.85 * groan)
+    # alien power grid dying: descending FM sweep
+    pd = ns(2.0)
+    tp = tarr(pd)
+    fpd = 1500 * (55 / 1500) ** (np.clip(tp / 1.7, 0, 1) ** 0.7)
+    powerdown = fm(fpd, pd, 1.41, 2.5 * np.exp(-tp / 0.6)) * env_points([(0, 0), (0.05, 1), (1.2, 0.5), (2.0, 0)], pd)
+    mix_into(x, pan(0.2 * powerdown, 0.15), ns(0.12))
+    # reward: glittering chimes on open fifths (D–A–E, no third -> sits over any music key)
+    chimes = _chimes(rng, n, [98, 93, 88, 86, 81, 86, 76, 81, 74, 69], 0.1, 1.6, dec=(0.6, 1.3))
+    x += 0.32 * _unit(chimes)
+    # rolling rumble tail
+    for c in range(2):
+        r = svf(brown(n, rng), 120, 0.7, "lp") * env_points([(0, 0), (0.3, 1), (1.8, 0.6), (4.6, 0)], n) ** 1.5
+        x[:, c] += 0.7 * _unit(r * _turbulence(n, rng, 3, 0.6))
+    x = saturate(x, 1.2)
+    x = reverb(x, "bighall", wet=0.28)
+    m = x.shape[0]
+    x *= macro(m, [(0, 0), (0.4, -1), (1.3, -5), (2.3, -11), (3.3, -19), (4.0, -28), (m / SR, -65)])[:, None]
+    return _premaster(widen(x, 1.25), "alien_city_destroyed")
+
+
+@sfx("weapon_bombs", -19.5)
+def weapon_bombs(rng):
+    """arming servo whirr + latch click (weapon switched to bombs)"""
+    n = ns(0.4)
+    t = tarr(n)
+    ts = 0.19  # servo run time
+    # small geared servo: spins up, runs, spins down
+    spin = np.clip(1 - np.exp(-t / 0.035), 0, 1) * np.clip((ts + 0.02 - t) / 0.045, 0, 1) ** 0.5
+    f = 380 + 820 * spin
+    whine = sine(f, n) * 0.6 + sine(2 * f, n) * 0.22 + triangle(3 * f, n) * 0.08
+    gear = 0.75 + 0.25 * np.sign(np.sin(2 * np.pi * np.cumsum(f / 7.0) / SR))  # gear-tooth chatter
+    brush = svf(white(n, rng), 3200, 1.0, "bp") * (0.6 + 0.4 * np.sin(2 * np.pi * np.cumsum(f / 12.0) / SR))
+    whirr = (whine * gear + 0.35 * brush) * env_points([(0, 0), (0.004, 0.7), (0.03, 1.0), (ts - 0.02, 0.9),
+                                                        (ts + 0.02, 0), (0.4, 0)], n)
+    whirr = svf(whirr, 6000, 0.7, "lp")
+    # latch "tch-k": bright click, then a short solid knock as the rack locks
+    m = ns(0.2)
+    tt = tarr(m)
+    click = _struck(rng, m, [2380, 3610, 5070, 6840], [0.03, 0.025, 0.02, 0.014], [1.0, 0.7, 0.5, 0.3], 0.0005)
+    click = _unit(click + 0.8 * svf(white(m, rng), 3000, 0.7, "hp") * exp_decay(m, 0.001))
+    knock = _struck(rng, m, [640, 1010, 1530], [0.05, 0.04, 0.03], [1.0, 0.6, 0.4], 0.0015)
+    knock = knock + 0.6 * sine(160 + 80 * np.exp(-tt / 0.008), m) * exp_decay(m, 0.022)
+    x = L(0.55 * _unit(whirr), at(0.8 * click, ts + 0.012), at(0.75 * _unit(knock), ts + 0.02))
+    return _premaster(trim_tail(rev_mono(x, "small", 0.15), -60), "weapon_bombs")
+
+
+@sfx("weapon_laser", -20)
+def weapon_laser(rng):
+    """short energy whine-up (weapon switched back to the laser)"""
+    n = ns(0.34)
+    t = tarr(n)
+    tu = 0.16
+    k = np.clip(t / tu, 0, 1)
+    f = 420 * (2100 / 420) ** (k ** 0.7)
+    whine = fm(f, n, 2.0, 0.6 + 1.2 * k) * 0.6 + sine(f * 1.5, n) * 0.2
+    whine *= 1 + 0.25 * np.sin(2 * np.pi * np.cumsum(25 + 60 * k) / SR)  # accelerating flutter
+    whine *= env_points([(0, 0), (0.003, 0.5), (tu, 1.0), (tu + 0.03, 0.55), (0.34, 0)], n)
+    sparkle = svf(white(n, rng), 6500, 1.2, "bp") * env_points([(0, 0), (tu * 0.6, 0.0), (tu, 1.0), (0.34, 0)], n)
+    m = ns(0.16)
+    tt = tarr(m)
+    ping = fm(2100, m, 2.0, 0.8 * np.exp(-tt / 0.03)) * exp_decay(m, 0.045, attack=0.001)
+    thrum = sine(95 + 60 * np.exp(-t / 0.02), n) * exp_decay(n, 0.03, attack=0.001)
+    x = L(whine + 0.12 * _unit(sparkle) + 0.35 * thrum, at(0.45 * ping, tu))
+    return _premaster(trim_tail(rev_mono(x, "small", 0.18), -60), "weapon_laser")
+
+
+@sfx("bomb_empty", -19.5)
+def bomb_empty(rng):
+    """dry empty click + short low buzz (no bombs left)"""
+    n = ns(0.3)
+    t = tarr(n)
+    tick = svf(white(n, rng), 2600, 1.2, "bp") * exp_decay(n, 0.003, attack=0.0004)
+    tuk = sine(170 + 60 * np.exp(-t / 0.004), n) * exp_decay(n, 0.016, attack=0.0008)
+    click = _unit(_unit(tick) + 0.8 * _unit(tuk))
+    m = ns(0.24)
+    b = square(98, m, 0.42) + square(103.5, m, 0.5)
+    b = svf(b, 1150, 1.2, "bp") + 0.3 * svf(b, 300, 0.7, "lp")
+    b = bitcrush(_unit(b), 7) * adsr(0.19, 0.005, 0.04, 0.8, 0.03, m)
+    x = L(0.6 * click, at(0.75 * b, 0.035))
+    return _premaster(trim_tail(x, -60), "bomb_empty")
+
+
+@sfx("hyperjump_long", -11, stereo_out=True)
+def hyperjump_long(rng):
+    """long jump between star systems: ominous, red-shifted build-up from 0 s, crack/whoosh at 3.75 s
+    (the white flash / scene switch), short decay to ~4.6 s"""
+    n = ns(5.0)
+    t = tarr(n)
+    tc = 3.75
+    k = np.clip(t / tc, 0, 1)
+    gate = np.clip((tc - t) / 0.006, 0, 1)  # the build-up is torn off at the flash
+    inhale = env_points([(0, 1), (3.55, 1), (tc - 0.02, db(-9)), (5.0, db(-9))], n, "exp")  # breath before the hit
+    # 1) sub pressure: slowly rising sine, pulsing faster and faster
+    f_sub = 29 * (52 / 29) ** (k ** 1.5)
+    puls = 0.75 + 0.25 * np.sin(2 * np.pi * np.cumsum(0.8 + 7.0 * k ** 2) / SR)
+    sub = sine(f_sub, n) * (0.25 + 0.75 * k ** 1.4) * puls
+    # 2) dark, red-shifted drone: detuned saws on A1 + tritone + A2, rising a fifth, filter opening;
+    #    a low-mid growl band keeps it audible on small speakers from the first moment
+    f_d = 55.0 * 2 ** ((7 / 12) * k ** 1.8)
+    src = (saw(f_d * cents(-8), n) + saw(f_d * cents(7), n) + 0.7 * saw(f_d * 2 ** (6 / 12), n)
+           + 0.5 * saw(f_d * 2 * cents(4), n))
+    drone = lp24(src, 350 + 2300 * k ** 2.2, 1.5) + 0.8 * svf(src, 520 + 300 * k, 2.2, "bp")
+    drone *= 0.55 + 0.45 * k ** 1.3
+    # 3) charge whine (family resemblance to the normal jump – lower, slower, darker)
+    f_c = 62 * (1150 / 62) ** (k ** 1.55)
+    trem = 0.62 + 0.38 * np.sin(2 * np.pi * np.cumsum(2.5 + 30 * k ** 2.2) / SR)
+    charge = sine(f_c, n) * 0.55 + saw(f_c, n) * 0.3 + saw(f_c * 1.498, n) * 0.12
+    charge = lp24(charge, 250 + 5200 * k ** 2.4, 1.2) * trem * k ** 1.6
+    # 4) red shift: high glassy tones sliding DOWN against the rising charge
+    f_r = 3900 * (1300 / 3900) ** k
+    redshift = (fm(f_r, n, 1.414, 0.8) + 0.7 * fm(f_r * cents(-23), n, 1.414, 0.6)) * np.sin(np.pi * k) ** 2
+    # 5) pressure noise (stereo, slowly rotating) and the suck-in right before the flash
+    nzl = svf(pink(n, rng), 300 * (5200 / 300) ** (k ** 1.8), 1.3, "bp")
+    nzr = svf(pink(n, rng), 320 * (5200 / 320) ** (k ** 1.8), 1.3, "bp")
+    rot = np.sin(2 * np.pi * np.cumsum(0.25 + 1.6 * k ** 2) / SR)
+    press = np.stack([nzl * (1 + 0.4 * rot), nzr * (1 - 0.4 * rot)], axis=1) * (0.3 + 0.7 * k ** 2.3)[:, None]
+    tpk = tc - 0.1  # the riser peaks just before the flash, then a short breath -> the crack stands out
+    ks = np.clip((t - (tc - 0.6)) / (tpk - (tc - 0.6)), 0, 1)
+    rgate = np.clip((tpk + 0.04 - t) / 0.04, 0, 1)
+    suck = svf(white(n, rng), 900 * (13000 / 900) ** ks, 1.6, "bp") * ks ** 3 * rgate
+    zip_ = sine(220 * (3200 / 220) ** (ks ** 2), n) * ks ** 2.5 * rgate
+    # 6) hull stress creaks
+    creaks = np.zeros((n, 2))
+    for on, fcr, p in ((0.75, 188, -0.6), (1.65, 143, 0.55), (2.45, 231, -0.3), (3.1, 167, 0.4)):
+        m = ns(0.9)
+        tt = tarr(m)
+        bend = 1 - 0.07 * (1 - np.exp(-tt / 0.35))
+        c = np.zeros(m)
+        for r, d, g in ((1.0, 0.8, 1.0), (2.31, 0.6, 0.6), (3.87, 0.45, 0.4), (5.12, 0.3, 0.25)):
+            c += g * np.sin(2 * np.pi * np.cumsum(fcr * r * bend) / SR) * np.exp(-6.9 * tt / d)
+        c *= (1 - np.exp(-tt / 0.06)) * (1 + 0.4 * lfo(m, 11 + fcr / 40))
+        mix_into(creaks, pan(c, p), ns(on))
+    body = (stereo_sub(0.8 * sub + 0.6 * _unit(drone) + 0.5 * _unit(charge) + 0.1 * _unit(redshift))
+            + 0.35 * _unit(press) + 0.14 * _unit(creaks)) * inhale[:, None]
+    build = body + stereo_sub(0.45 * _unit(suck) + 0.25 * zip_)
+    # overall swell: ominous from the first moment, pressing into the flash
+    build *= env_points([(0, db(-17)), (1.0, db(-15)), (2.2, db(-11.5)), (3.2, db(-7.5)), (3.55, db(-5.5)),
+                         (tc, db(-4.5)), (5.0, db(-4.5))], n, "exp")[:, None]
+    build *= gate[:, None]
+    # climax at the flash: crack + whoosh + tear, moderate boom (the arrival sound brings the big one)
+    m = n - ns(tc)
+    tt = tarr(m)
+    crack = saturate(_unit(svf(white(m, rng), 2200, 0.6, "hp") * exp_decay(m, 0.009, attack=0.0002)), 3.0)
+    whoosh = np.stack([svf(pink(m, rng), 250 + 10000 * np.exp(-tt / 0.13), 1.0, "bp"),
+                       svf(pink(m, rng), 260 + 10500 * np.exp(-tt / 0.14), 1.0, "bp")], axis=1)
+    whoosh *= exp_decay(m, 0.3, attack=0.003)[:, None]
+    tear = fm(300 + 4200 * np.exp(-tt / 0.07), m, 0.5, 2.2 * np.exp(-tt / 0.06)) * exp_decay(m, 0.09)
+    boom = at(sine(30 + 85 * np.exp(-tt / 0.05), m) * exp_decay(m, 0.32, attack=0.006), 0.014)[:m]  # follows the crack
+    hit = stereo_sub(1.4 * crack + 0.5 * tear + 0.55 * boom) + 1.4 * _unit(whoosh)
+    x = build.copy()
+    mix_into(x, hit, ns(tc))
+    xs = chorus(x, 0.4, 3, 10, 0.3)
+    xs = reverb(xs, "hall", 0.25)
+    # short decay after the flash: the tail has died away by ~4.6 s instead of being cut off
+    m = xs.shape[0]
+    xs *= macro(m, [(0, 0), (tc + 0.08, 0), (tc + 0.35, -5), (tc + 0.6, -13), (4.55, -27), (4.75, -45),
+                    (m / SR, -70)])[:, None]
+    return _premaster(widen(xs, 1.4), "hyperjump_long")
+
+
+@sfx("hyperjump_arrive_long", -10.5, stereo_out=True)
+def hyperjump_arrive_long(rng):
+    """arrival after the long jump: deeper, heavier boom + low braam, passing whoosh, ringing hull, rumble"""
+    n = ns(2.8)
+    t = tarr(n)
+    fbm = 20 + 68 * np.exp(-t / 0.13)
+    boom = sine(fbm, n) * exp_decay(n, 0.95, attack=0.002) + 0.3 * sine(2 * fbm, n) * exp_decay(n, 0.35)
+    burst = lp24(white(n, rng), 150 + 2600 * np.exp(-t / 0.07), 0.8) * exp_decay(n, 0.28, attack=0.001)
+    # heavy low "braam": detuned saws on D1/A1, filter blooming open and closing again
+    fb = midi_to_hz(26)
+    br = saw(fb * cents(-9), n) + saw(fb * cents(8), n) + 0.8 * saw(fb * 1.5 * cents(3), n) + \
+        0.6 * saw(fb * 2 * cents(-4), n)
+    br = lp24(br, 90 + 1400 * np.exp(-t / 0.4) * (1 - np.exp(-t / 0.02)), 1.3)
+    br = saturate(br * env_points([(0, 0), (0.015, 1), (0.6, 0.6), (2.0, 0.15), (2.8, 0)], n) * 0.6, 1.8)
+    # whoosh passing from left to right as the ship drops out of the tunnel
+    wl = svf(pink(n, rng), 160 + 6500 * np.exp(-t / 0.45), 1.2, "bp")
+    wr = svf(pink(n, rng), 170 + 6800 * np.exp(-t / 0.47), 1.2, "bp")
+    p = np.tanh((t - 0.35) / 0.25)
+    whoosh = np.stack([wl * (1 - 0.6 * p), wr * (1 + 0.6 * p)], axis=1) * exp_decay(n, 0.6, attack=0.01)[:, None]
+    shimmer = np.stack([svf(white(n, rng), 6800, 3.0, "bp"), svf(white(n, rng), 7400, 3.0, "bp")], axis=1)
+    shimmer *= (exp_decay(n, 0.8, attack=0.04) * 0.3)[:, None]
+    tone = fm(146.8 * (1 + 0.45 * np.exp(-t / 0.12)), n, 2.0, 1.4 * np.exp(-t / 0.5)) * exp_decay(n, 0.7) * 0.22
+    # the hull rings on after the stress of the long jump (low inharmonic modes)
+    hull = _struck(rng, n, [61.0, 97.6, 143.0, 211.0, 297.0], [1.7, 1.4, 1.1, 0.8, 0.6], [1.0, 0.8, 0.6, 0.4, 0.25],
+                   0.004)
+    hull *= 1 + 0.25 * lfo(n, 5.5)
+    rumble = np.stack([svf(brown(n, rng), 95, 0.7, "lp"), svf(brown(n, rng), 95, 0.7, "lp")], axis=1)
+    rumble *= (env_points([(0, 0), (0.12, 1), (1.0, 0.6), (2.8, 0)], n) ** 1.5 * _turbulence(n, rng, 4, 0.5))[:, None]
+    x = stereo_sub(_unit(boom) + 0.6 * _unit(burst) + 0.8 * _unit(br) + tone + 0.3 * hull) + \
+        1.0 * _unit(whoosh) + shimmer + 0.45 * _unit(rumble)
+    x = reverb(x, "bighall", 0.3)
+    m = x.shape[0]
+    x *= macro(m, [(0, 0), (0.5, -2), (1.2, -8), (2.0, -16), (2.6, -26), (m / SR, -60)])[:, None]
+    return _premaster(widen(x, 1.35), "hyperjump_arrive_long")
+
 
 # maximum file durations (spec durations + a little room for the natural tail); a smooth fade
 # is applied at the cut. Loops are never cut.
@@ -901,6 +1355,16 @@ MAXDUR = {
 # UI / tiny sounds must never be peaky: lower peak ceilings (dBFS)
 PEAK_MAX = {"ui_move": -9.0, "ui_select": -8.0, "ui_back": -9.0, "ui_error": -8.0, "ui_type": -10.0,
             "target_lock": -12.0, "refuel_tick": -7.0, "ion_ready": -10.0}
+
+# bombs / alien city / long hyperjump (added later)
+MAXDUR.update({
+    "bomb_release": 0.62, "bomb_fall": 1.5, "bomb_impact": 3.1, "alien_city_destroyed": 4.1, "weapon_bombs": 0.38,
+    "weapon_laser": 0.32, "bomb_empty": 0.3, "hyperjump_long": 4.6, "hyperjump_arrive_long": 2.6,
+})
+PEAK_MAX.update({"weapon_bombs": -5.0, "weapon_laser": -6.0, "bomb_empty": -7.0})
+# true-peak ceilings (dBTP) – only the sounds listed here get the extra tp_guard() pass in finish()
+TP_MAX = {name: -1.0 for name in ("bomb_release", "bomb_fall", "bomb_impact", "alien_city_destroyed", "weapon_bombs",
+                                  "weapon_laser", "bomb_empty", "hyperjump_long", "hyperjump_arrive_long")}
 
 
 def cap(name, x):
@@ -945,6 +1409,8 @@ def finish(name, x, target_rms, loop):
             p2 = np.max(np.abs(x))
             if p2 > ceiling:
                 x *= ceiling / p2
+    if name in TP_MAX and not loop:  # opt-in (newer sounds only): true-peak safety on top
+        x = tp_guard(x, TP_MAX[name])
     return x
 
 

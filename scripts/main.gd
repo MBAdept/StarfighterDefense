@@ -3,7 +3,8 @@ extends Node
 ## =============================================================================================
 ##  Hauptknoten: Spielzustände, Karten-Overlay, Sprünge (Hyperraum), Pause, Testfunktionen.
 ##  Zustände [Spielbeschreibung §2]: Titel, Orbit-Start, Karte, Weltraumkampf, Planetenkampf,
-##  Andocken, Game Over, Feindsystem (Platzhalter).
+##  Andocken, Auswertung (Game Over / Sieg / Abbruch). Das Feindsystem nutzt dieselben Kampfszenen
+##  (Empfangskomitee = Weltraumkampf, Feindplanet = Planetenkampf mit Bomben).
 ## =============================================================================================
 
 static var instance: Main
@@ -24,6 +25,7 @@ var pause_layer: CanvasLayer
 var pause_menu: PauseMenu = null
 var debug_label: Label
 var _jumping := false
+var _jump_target_pos := Vector2.ZERO
 var _test := {}
 
 
@@ -102,7 +104,7 @@ func _set_scene(node: Node, new_state: State) -> void:
 	state_root.add_child(node)
 	var is_3d := new_state in [State.ORBIT, State.SPACE, State.PLANET, State.STATION]
 	postfx_layer.visible = is_3d and Settings.retro_filter
-	ticker.visible = new_state in [State.ORBIT, State.SPACE, State.PLANET, State.STATION, State.ENEMY_SYSTEM]
+	ticker.visible = new_state in [State.ORBIT, State.SPACE, State.PLANET, State.STATION]
 
 
 ## Bricht einen laufenden Hyperraumsprung ab (z. B. Game Over während des Sprungs).
@@ -116,12 +118,24 @@ func goto_title() -> void:
 	close_map(false)
 	get_tree().paused = false
 	GameState.running = false
+	GameState.in_game = false
 	_set_scene(TitleScreen.new(), State.TITLE)
+
+
+## Pausemenü "Spiel beenden": laufende Partie abbrechen → Auswertung (sonst Titel).
+func abort_game() -> void:
+	get_tree().paused = false
+	if GameState.in_game and not GameState.game_over and not GameState.planets.is_empty():
+		GameState.abort_game()   # → game_over_triggered("abort") → Auswertung
+	else:
+		goto_title()
 
 
 func new_game() -> void:
 	_abort_jump()
 	GameState.new_game()
+	if _test.has("simspeed"):
+		GameState.time_scale = float(_test["simspeed"])
 	ticker.clear()
 	transition.fade(func():
 		if Config.start_with_orbit:
@@ -132,21 +146,35 @@ func new_game() -> void:
 	, 0.6, 0.8)
 
 
-func goto_game_over() -> void:
+func goto_game_over(out_time := 1.2) -> void:
 	_abort_jump()
 	close_map(false)
+	get_tree().paused = false
+	GameState.in_game = false
 	transition.fade(func():
 		_set_scene(GameOverScreen.new(), State.GAME_OVER)
-	, 1.2, 1.0)
+	, out_time, 1.0)
 
 
-func _on_game_over(_reason: String) -> void:
+func _on_game_over(reason: String) -> void:
+	if reason == "abort":
+		if scene is CombatBase and not (scene as CombatBase).frozen:
+			(scene as CombatBase).set_frozen(true)   # kein weiterer Kampf während des Abblendens
+		goto_game_over(0.6)
+		return
+	if reason == "victory":
+		# Siegsequenz in der Kampfszene (Explosionen, Fanfare), danach Auswertung
+		if not is_map_open() and scene and scene.has_method("play_victory_sequence") and not (scene as CombatBase).frozen:
+			scene.play_victory_sequence(func(): goto_game_over(1.6))
+		else:
+			goto_game_over()
+		return
 	# Kampfszene zeigt ggf. noch die Zerstörung des eigenen Schiffs (siehe CombatBase)
 	if is_map_open() or (scene is CombatBase and (scene as CombatBase).frozen):
 		goto_game_over()
 		return
 	if scene and scene.has_method("play_death_sequence"):
-		scene.play_death_sequence(func(): goto_game_over())
+		scene.play_death_sequence(func(): goto_game_over(), reason)
 	else:
 		goto_game_over()
 
@@ -181,7 +209,7 @@ func open_map() -> void:
 	map_screen = MapScreen.new()
 	map_layer.add_child(map_screen)
 	Audio.sfx("map_open", -2.0, 1.0, 0.0, "UI")
-	Audio.play_music("map_theme", 1.2)
+	Audio.play_music(map_music(), 1.2)
 
 
 func close_map(resume := true) -> void:
@@ -198,14 +226,30 @@ func close_map(resume := true) -> void:
 			Audio.play_music(scene.music_track(), 1.0)
 
 
+## Kartenmusik des Systems, in dem sich der Spieler befindet.
+func map_music() -> String:
+	return "enemy_system_theme" if GameState.player_system == 1 else "map_theme"
+
+
+func is_jumping() -> bool:
+	return _jumping
+
+
 ## Sprung zu einem Kartenziel. kind: GameState.Loc, id: Objekt-ID.
+## Über die Systemgrenze (ins Feindsystem / zurück nach Helion): feste Kosten, 3× so lang, roter Hyperraum.
 func request_jump(kind: int, id: int) -> void:
 	if _jumping:
 		return
+	if scene is PlanetCombat:
+		(scene as PlanetCombat).resolve_pending_bombs()
+		if GameState.game_over:
+			return   # die letzte Bombe hat die Heimatwelt getroffen: Sieg statt Sprung
 	var target_pos := _loc_map_pos(kind, id)
+	var long := GameState.is_cross_system(kind)
 	_jumping = true
+	_jump_target_pos = target_pos
 	close_map(false)
-	GameState.pay_jump(target_pos)
+	GameState.pay_jump_to(kind, target_pos)
 	if GameState.game_over:
 		_jumping = false
 		return
@@ -213,7 +257,7 @@ func request_jump(kind: int, id: int) -> void:
 		_enter_location(kind, id)
 	, func():
 		_jumping = false
-	)
+	, long)
 
 
 func _loc_map_pos(kind: int, id: int) -> Vector2:
@@ -227,6 +271,10 @@ func _loc_map_pos(kind: int, id: int) -> Vector2:
 			return sq.map_pos if sq else GameState.player_map_pos
 		GameState.Loc.ENEMY_SYSTEM:
 			return GameState.JUMP_POINT
+		GameState.Loc.ENEMY_PLANET:
+			return GameState.enemy_planets[id].map_pos()
+		GameState.Loc.HOME_SYSTEM:
+			return GameState.ENEMY_GATE
 	return GameState.player_map_pos
 
 
@@ -240,9 +288,14 @@ func _enter_location(kind: int, id: int) -> void:
 			_set_scene(SpaceCombat.create_station(GameState.stations[id]), State.STATION)
 		GameState.Loc.SQUADRON:
 			var sq := GameState.squadron_by_id(id)
-			if sq == null:
+			if sq == null or sq.system != GameState.player_system:
+				# vernichtet – oder während des Sprungs ins andere System gewechselt
 				GameState.set_player_location(GameState.Loc.SPACE, -1)
-				_set_scene(SpaceCombat.create_empty(), State.SPACE)
+				GameState.player_map_pos = _jump_target_pos
+				var note := ""
+				if sq != null:
+					note = "%s ist ins %s-System gesprungen" % [sq.name, GameState.STAR_NAME]
+				_set_scene(SpaceCombat.create_empty(false, note), State.SPACE)
 			elif sq.state == SquadronData.State.LANDED:
 				_enter_location(GameState.Loc.PLANET, sq.target_id)
 			elif sq.state == SquadronData.State.AT_STATION:
@@ -251,18 +304,18 @@ func _enter_location(kind: int, id: int) -> void:
 				GameState.set_player_location(GameState.Loc.SQUADRON, id)
 				_set_scene(SpaceCombat.create_squadron(sq), State.SPACE)
 		GameState.Loc.ENEMY_SYSTEM:
-			GameState.set_player_location(GameState.Loc.ENEMY_SYSTEM, -1)
-			_set_scene(EnemySystemState.new(), State.ENEMY_SYSTEM)
+			# Ankunft im Feindsystem: jedes Mal ein Empfangskomitee
+			GameState.enter_enemy_system()
+			_set_scene(SpaceCombat.create_reception(), State.SPACE)
+		GameState.Loc.HOME_SYSTEM:
+			GameState.enter_home_system()
+			_set_scene(SpaceCombat.create_empty(true), State.SPACE)
+		GameState.Loc.ENEMY_PLANET:
+			GameState.set_player_location(GameState.Loc.ENEMY_PLANET, id)
+			_set_scene(PlanetCombat.create(GameState.enemy_planets[id]), State.PLANET)
 		_:
 			GameState.set_player_location(GameState.Loc.SPACE, -1)
 			_set_scene(SpaceCombat.create_empty(), State.SPACE)
-
-
-## Rückweg aus dem Feindsystem-Platzhalter (oder generisch): Karte öffnen.
-func return_to_space() -> void:
-	GameState.set_player_location(GameState.Loc.SPACE, -1)
-	GameState.player_map_pos = GameState.JUMP_POINT * 0.85
-	_set_scene(SpaceCombat.create_empty(), State.SPACE)
 
 
 # =============================================================================================
@@ -276,7 +329,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if get_tree().paused:
 		return
 	if event.is_action_pressed("pause"):
-		if state in [State.ORBIT, State.SPACE, State.PLANET, State.STATION, State.ENEMY_SYSTEM] and not _jumping:
+		if state in [State.ORBIT, State.SPACE, State.PLANET, State.STATION] and not _jumping and not GameState.game_over:
 			open_pause()
 			get_viewport().set_input_as_handled()
 		return
@@ -310,21 +363,27 @@ func _debug_key(code: int) -> void:
 	match code:
 		KEY_F1:
 			debug_label.visible = not debug_label.visible
-			debug_label.text = "TESTTASTEN: F2 Energie +50 | F3 neues Schwadron | F4 Orbit-Kampf überspringen | F5 Gegner im Kampf vernichten\nF6 Schwadron auf nächsten Planeten landen + hinspringen | F7 Strategiezeit x4 | F8 Feindsystem-Platzhalter | F9 Game Over | F10 Energie -20 | F12 Screenshot"
+			debug_label.text = "TESTTASTEN: F2 Energie +50 und Bomben voll | F3 neues Schwadron | F4 Orbit-Kampf überspringen | F5 Gegner im Kampf vernichten\nF6 Schwadron auf nächsten Planeten landen + hinspringen | F7 Strategiezeit x4 | F8 direkt ins Feindsystem | F9 Game Over | F10 Energie -20 | F12 Screenshot"
 		KEY_F2:
 			GameState.change_energy(50.0)
+			while GameState.refill_bomb():
+				pass
 		KEY_F3:
 			GameState.debug_spawn_squadron()
 		KEY_F4:
-			if state == State.ORBIT and scene.has_method("debug_finish_orbit"):
-				scene.debug_finish_orbit()
+			if scene and scene.has_method("debug_finish_orbit") and not is_map_open() and not _jumping and not GameState.game_over and not (scene as CombatBase).dying:
+				scene.debug_finish_orbit()   # Orbit-Kampf bzw. Empfangskomitee
 		KEY_F5:
 			if scene and scene.has_method("debug_kill_all"):
 				scene.debug_kill_all()
 		KEY_F6:
 			if GameState.planets.is_empty():
 				return
+			if _jumping or GameState.game_over:
+				return
 			var p: PlanetData = GameState.planets[(GameState.player_loc_id + 1) % GameState.planets.size()] if GameState.player_loc == GameState.Loc.PLANET else GameState.home_planet()
+			if GameState.player_system == 1:
+				GameState.enter_home_system()
 			GameState.debug_land_squadron_on(p)
 			close_map(false)
 			_enter_location(GameState.Loc.PLANET, p.id)
@@ -332,7 +391,9 @@ func _debug_key(code: int) -> void:
 			GameState.time_scale = 4.0 if GameState.time_scale == 1.0 else 1.0
 			ticker.push("Strategiezeit x%d" % int(GameState.time_scale), GameState.Sev.INFO)
 		KEY_F8:
-			if not GameState.planets.is_empty():
+			if not GameState.planets.is_empty() and not _jumping and not GameState.game_over and state in [State.ORBIT, State.SPACE, State.PLANET, State.STATION]:
+				if not GameState.running:
+					GameState.start_campaign()
 				close_map(false)
 				_enter_location(GameState.Loc.ENEMY_SYSTEM, -1)
 		KEY_F9:
@@ -380,6 +441,8 @@ func _run_test_scenario() -> void:
 	if _test.has("speed"):
 		Engine.time_scale = float(_test["speed"])
 	GameState.new_game()
+	if _test.has("simspeed"):
+		GameState.time_scale = float(_test["simspeed"])
 	match what:
 		"title":
 			goto_title()
@@ -416,15 +479,63 @@ func _run_test_scenario() -> void:
 			_set_scene(SpaceCombat.create_orbit(true), State.ORBIT)
 			await get_tree().process_frame
 			open_map()
+			if _test.get("select", "") == "enemy" and map_screen:
+				map_screen._select(GameState.Loc.ENEMY_SYSTEM, -1, false)
+			if _test.has("enemyview") and map_screen:
+				map_screen.toggle_view()
 			if _test.has("jumptest"):
 				await get_tree().create_timer(1.5).timeout
 				request_jump(GameState.Loc.SQUADRON, GameState.squadrons[0].id)
-		"gameover":
+		"gameover", "evaluation":
 			GameState.score = 12345
-			GameState.game_over_reason = "energy"
+			GameState.end_kind = _test.get("end", "gameover")
+			GameState.game_over_reason = {"victory": "victory", "abort": "abort"}.get(GameState.end_kind, "energy")
+			GameState.victory = GameState.end_kind == "victory"
+			GameState.play_time = 1534.0
+			for k in ["fighters", "destroyers", "flagships", "enemy_cities", "cities_lost"]:
+				GameState.stats[k] = {"fighters": 87, "destroyers": 14, "flagships": 2, "enemy_cities": 23, "cities_lost": 9}[k]
+			GameState.stats.points = {"fighters": 4350, "destroyers": 10250, "flagships": 10000, "enemy_cities": 115000, "bonus": 7800}
+			GameState.game_over = true
+			GameState.in_game = false
 			_set_scene(GameOverScreen.new(), State.GAME_OVER)
 		"enemy":
+			# Sprung ins Feindsystem: Empfangskomitee
+			GameState.start_campaign()
 			_enter_location(GameState.Loc.ENEMY_SYSTEM, -1)
+		"enemy_planet", "victory":
+			# Feindplanet (--planet=N, 0 = Heimatwelt); --nodefenders: Luftverteidigung bereits ausgeschaltet
+			GameState.start_campaign()
+			GameState.player_system = 1
+			GameState.reception_active = false
+			var idx := clampi(int(_test.get("planet", "0" if what == "victory" else "1")), 0, GameState.enemy_planets.size() - 1)
+			var ep: PlanetData = GameState.enemy_planets[idx]
+			if _test.has("nodefenders") or what == "victory":
+				ep.defenders = 0
+			if what == "victory":
+				# nur noch eine Stadt der Heimatwelt übrig
+				for ci in ep.cities.size() - 1:
+					ep.cities[ci] = false
+			_enter_location(GameState.Loc.ENEMY_PLANET, idx)
+		"enemy_intercept":
+			# Schwadron im Feindsystem abfangen (Zerstörer/Flaggschiff möglich)
+			GameState.start_campaign()
+			GameState.player_system = 1
+			GameState.reception_active = false
+			var esq: SquadronData = GameState._launch_enemy_squadron(GameState.enemy_planets[2], 2, 0.4)
+			if _test.has("flagship"):
+				esq.has_flagship = true
+			_enter_location(GameState.Loc.SQUADRON, esq.id)
+		"enemy_map":
+			GameState.start_campaign()
+			GameState.time_scale = 1.0
+			GameState.player_system = 1
+			GameState.reception_active = false
+			for i in 2:
+				GameState._launch_enemy_squadron(GameState.enemy_planets[1 + i], 1, 0.3 + 0.3 * i)
+			GameState.set_player_location(GameState.Loc.ENEMY_SYSTEM, -1)
+			_set_scene(SpaceCombat.create_empty(), State.SPACE)
+			await get_tree().process_frame
+			open_map()
 	if _test.has("shot"):
 		var wait := float(_test.get("wait", "3"))
 		if _test.has("look"):

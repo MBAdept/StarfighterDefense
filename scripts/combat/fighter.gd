@@ -19,6 +19,10 @@ var return_x := 0.0
 var _prev_vel := Vector3.ZERO
 var _burst_left := 0
 var _burst_t := 0.0
+## Aggressivität (Empfangskomitee/Verteidiger im Feindsystem): Feuerrate × fire_rate_factor,
+## Schüsse je Feuerstoß = burst_shots (< 0: Config.fighter_burst_shots). Vor add_enemy() setzen.
+var fire_rate_factor := 1.0
+var burst_shots := -1
 
 
 func _ready() -> void:
@@ -32,7 +36,7 @@ func _ready() -> void:
 	_retune()
 	orbit_phase = randf() * TAU
 	flyover_timer = randf_range(Config.fighter_flyover_min, Config.fighter_flyover_max)
-	fire_timer = randf_range(Config.fighter_first_fire_min, Config.fighter_first_fire_max)   # [FREI] erster Feuerstoß schon im Anflug
+	fire_timer = randf_range(Config.fighter_first_fire_min, Config.fighter_first_fire_max) / maxf(fire_rate_factor, 0.1)   # [FREI] erster Feuerstoß schon im Anflug
 	Audio.sfx_3d("warp_in", combat, global_position, -6.0)
 	Effects.warp_in(combat.fx_root, global_position, 5.0, Color(1.0, 0.5, 0.25))
 
@@ -134,8 +138,8 @@ func _update_fire(delta: float, local: Vector3) -> void:
 		return
 	fire_timer -= delta
 	if fire_timer <= 0.0:
-		fire_timer = randf_range(Config.fighter_fire_min, Config.fighter_fire_max)
-		_burst_left = maxi(Config.fighter_burst_shots, 1) - 1
+		fire_timer = randf_range(Config.fighter_fire_min, Config.fighter_fire_max) / maxf(fire_rate_factor, 0.1)
+		_burst_left = maxi(burst_shots if burst_shots >= 0 else Config.fighter_burst_shots, 1) - 1
 		_burst_t = Config.fighter_burst_gap
 		_fire_shot()
 

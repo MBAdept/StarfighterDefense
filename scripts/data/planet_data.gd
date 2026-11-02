@@ -1,6 +1,6 @@
 class_name PlanetData
 extends RefCounted
-## Zustand eines Planeten (Städte, Umlaufbahn, gelandetes Schwadron).
+## Zustand eines Planeten (Städte, Umlaufbahn, gelandetes Schwadron) – im Helion- wie im Feindsystem.
 
 var id := 0
 var name := ""
@@ -15,6 +15,10 @@ var city_pos: Array = []        ## Vector2 (m) – Lage der Stadt auf der Oberfl
 var city_variant: Array = []    ## int 0..2 (Modellvariante)
 var city_names: Array = []
 var landed_squadron := -1       ## Schwadron-ID, die gerade auf dem Planeten ist (-1 = keins)
+# Feindsystem
+var is_enemy := false           ## Planet des Feindsystems (Städte werden vom Spieler zerbombt)
+var defenders := 0              ## verbleibende Verteidiger-Fighter (keine Regeneration)
+var defenders_initial := 0
 
 
 func alive_cities() -> int:
