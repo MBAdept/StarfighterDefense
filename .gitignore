@@ -1,0 +1,15 @@
+# Godot 4: Importcache und Editor-Daten (werden beim Öffnen neu erzeugt)
+.godot/
+*.translation
+# Exporte / Build-Ausgaben (siehe export_presets.cfg -> ../builds/)
+builds/
+*.x86_64
+*.exe
+*.pck
+*.zip
+# lokale Spielwerte-Overrides und Werkzeug-Caches
+balance.cfg
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db

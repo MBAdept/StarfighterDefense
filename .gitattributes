@@ -1,0 +1,11 @@
+# Zeilenenden normalisieren, Binärdateien nie verändern
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.glb binary
+*.wav binary
+*.ogg binary
+*.woff2 binary
+*.ttf binary
+*.sf2 binary

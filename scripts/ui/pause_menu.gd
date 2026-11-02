@@ -1,0 +1,64 @@
+class_name PauseMenu
+extends Control
+## Pausemenü (Esc / Start).
+
+signal closed
+
+var _box: VBoxContainer
+var _sub: Control = null
+
+
+func _ready() -> void:
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	theme = UITheme.get_theme()
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0.01, 0.03, 0.6)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(dim)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(center)
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(520, 0)
+	center.add_child(panel)
+	_box = VBoxContainer.new()
+	_box.add_theme_constant_override("separation", 16)
+	panel.add_child(_box)
+	_box.add_child(UITheme.title_label("PAUSE", 54))
+	_box.add_child(UITheme.button("WEITER", _resume))
+	_box.add_child(UITheme.button("OPTIONEN", func(): _open_sub(OptionsMenu.new())))
+	_box.add_child(UITheme.button("STEUERUNG", func(): _open_sub(ControlsHelp.new())))
+	_box.add_child(UITheme.button("ZUM HAUPTMENÜ", _to_title))
+	Audio.ui("map_open", -6.0)
+	await get_tree().process_frame
+	_box.get_child(1).grab_focus()
+
+
+func _open_sub(c: Control) -> void:
+	_sub = c
+	add_child(c)
+	c.closed.connect(func():
+		_sub = null
+		_box.get_child(2).grab_focus()
+	)
+
+
+func _resume() -> void:
+	closed.emit()
+	queue_free()
+
+
+func _to_title() -> void:
+	closed.emit()
+	queue_free()
+	Main.instance.goto_title()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if _sub:
+		return
+	if event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel"):
+		Audio.ui("ui_back")
+		_resume()
+		get_viewport().set_input_as_handled()

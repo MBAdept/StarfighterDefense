@@ -1,0 +1,55 @@
+class_name PlanetLook
+extends RefCounted
+## Farbwelten der Planetentypen (Karte, Orbitansicht, Oberfläche).
+
+const SURFACE := {
+	"terran": {"ground_a": Color(0.16, 0.30, 0.13), "ground_b": Color(0.36, 0.31, 0.21), "grid": Color(0.3, 0.9, 1.0),
+		"sky_top": Color(0.08, 0.26, 0.6), "sky_horizon": Color(0.6, 0.78, 0.95), "fog": Color(0.58, 0.74, 0.9), "sun": Color(1.0, 0.95, 0.85), "stars": 0.0, "lava": 0.0, "water": 0.25},
+	"desert": {"ground_a": Color(0.74, 0.52, 0.29), "ground_b": Color(0.52, 0.33, 0.17), "grid": Color(1.0, 0.75, 0.35),
+		"sky_top": Color(0.3, 0.42, 0.72), "sky_horizon": Color(0.97, 0.8, 0.58), "fog": Color(0.92, 0.77, 0.58), "sun": Color(1.0, 0.9, 0.75), "stars": 0.0, "lava": 0.0, "water": 0.0},
+	"ice": {"ground_a": Color(0.82, 0.9, 0.97), "ground_b": Color(0.52, 0.66, 0.82), "grid": Color(0.4, 0.8, 1.0),
+		"sky_top": Color(0.12, 0.3, 0.62), "sky_horizon": Color(0.78, 0.9, 1.0), "fog": Color(0.8, 0.9, 1.0), "sun": Color(0.95, 0.97, 1.0), "stars": 0.0, "lava": 0.0, "water": 0.0},
+	"jungle": {"ground_a": Color(0.08, 0.27, 0.1), "ground_b": Color(0.22, 0.4, 0.14), "grid": Color(0.5, 1.0, 0.6),
+		"sky_top": Color(0.08, 0.3, 0.36), "sky_horizon": Color(0.55, 0.85, 0.72), "fog": Color(0.45, 0.7, 0.6), "sun": Color(1.0, 0.97, 0.85), "stars": 0.0, "lava": 0.0, "water": 0.15},
+	"volcanic": {"ground_a": Color(0.09, 0.07, 0.07), "ground_b": Color(0.22, 0.12, 0.08), "grid": Color(1.0, 0.45, 0.15),
+		"sky_top": Color(0.07, 0.02, 0.02), "sky_horizon": Color(0.6, 0.2, 0.08), "fog": Color(0.38, 0.13, 0.06), "sun": Color(1.0, 0.7, 0.5), "stars": 0.3, "lava": 1.0, "water": 0.0},
+	"ocean": {"ground_a": Color(0.05, 0.24, 0.42), "ground_b": Color(0.32, 0.42, 0.3), "grid": Color(0.4, 0.95, 1.0),
+		"sky_top": Color(0.1, 0.38, 0.75), "sky_horizon": Color(0.68, 0.86, 1.0), "fog": Color(0.62, 0.8, 0.95), "sun": Color(1.0, 0.97, 0.9), "stars": 0.0, "lava": 0.0, "water": 0.85},
+	"toxic": {"ground_a": Color(0.42, 0.52, 0.1), "ground_b": Color(0.28, 0.36, 0.09), "grid": Color(0.8, 1.0, 0.3),
+		"sky_top": Color(0.22, 0.07, 0.32), "sky_horizon": Color(0.72, 0.76, 0.35), "fog": Color(0.56, 0.6, 0.3), "sun": Color(0.95, 1.0, 0.8), "stars": 0.1, "lava": 0.0, "water": 0.0},
+	"barren": {"ground_a": Color(0.36, 0.34, 0.33), "ground_b": Color(0.2, 0.19, 0.19), "grid": Color(0.6, 0.8, 1.0),
+		"sky_top": Color(0.005, 0.005, 0.02), "sky_horizon": Color(0.12, 0.12, 0.17), "fog": Color(0.07, 0.07, 0.1), "sun": Color(1.0, 0.98, 0.95), "stars": 1.0, "lava": 0.0, "water": 0.0},
+}
+
+
+static func surface(type: String) -> Dictionary:
+	return SURFACE.get(type, SURFACE["terran"])
+
+
+static func palette(type: String) -> Array:
+	var s := surface(type)
+	return [s.ground_a, s.ground_b]
+
+
+static func atmosphere(type: String) -> Color:
+	match type:
+		"terran":
+			return Color(0.35, 0.65, 1.0)
+		"desert":
+			return Color(1.0, 0.7, 0.4)
+		"ice":
+			return Color(0.6, 0.85, 1.0)
+		"jungle":
+			return Color(0.45, 0.95, 0.7)
+		"volcanic":
+			return Color(1.0, 0.35, 0.15)
+		"ocean":
+			return Color(0.35, 0.75, 1.0)
+		"toxic":
+			return Color(0.75, 1.0, 0.3)
+	return Color(0.4, 0.45, 0.55)
+
+
+static func map_color(type: String) -> Color:
+	var s := surface(type)
+	return (s.ground_a as Color).lerp(s.ground_b, 0.4).lightened(0.25)
