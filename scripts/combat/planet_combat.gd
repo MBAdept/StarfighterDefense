@@ -33,6 +33,7 @@ var impact_point := Vector3.ZERO  ## vorausberechneter Aufschlag einer jetzt abg
 var impact_city := -1             ## intakte Stadt im Trefferkreis (-1 = keine)
 var impact_pending := false       ## auf diese Stadt fällt bereits eine Bombe (Marke nicht grün)
 var _cam_pitch := 0.0
+var _reinforce_t := -1.0          ## Zeit bis zur nächsten Verstärkung (nach Vernichtung der Verteidiger)
 
 
 static func create(p: PlanetData) -> PlanetCombat:
@@ -497,10 +498,16 @@ func _update_waves(delta: float) -> void:
 func _on_enemy_removed(e: Enemy) -> void:
 	if e.kind == Enemy.Kind.FIGHTER:
 		if enemy_mode:
-			# [Vorgabe] Verteidiger regenerieren sich nicht
+			if e.has_meta("reinforcement"):
+				GameState.on_fighter_killed(null)   # Verstärkung: zählt nicht zum Verteidiger-Bestand
+				return
+			# [Vorgabe] der Verteidiger-Bestand regeneriert sich nicht
 			GameState.on_defender_killed(planet)
 			if planet.defenders <= 0 and _fighters_alive() == 0 and not GameState.game_over:
-				hud.show_message("LUFTVERTEIDIGUNG AUSGESCHALTET", "Jetzt in Ruhe bombardieren (Q: Bomben)" if planet.alive_cities() > 0 else "", 3.2, UITheme.GREEN)
+				var sub := ""
+				if planet.alive_cities() > 0:
+					sub = "Jetzt bombardieren (Q: Bomben) – Verstärkung kann eintreffen" if Config.enemy_reinforce_enabled else "Jetzt in Ruhe bombardieren (Q: Bomben)"
+				hud.show_message("LUFTVERTEIDIGUNG AUSGESCHALTET", sub, 3.2, UITheme.GREEN)
 				Audio.sfx("squadron_destroyed")
 				Audio.play_music(music_track(), 3.0)
 		else:
@@ -508,7 +515,7 @@ func _on_enemy_removed(e: Enemy) -> void:
 
 
 func on_destroyer_engages(d: Destroyer) -> void:
-	hud.show_message("ZERSTÖRER BRICHT BOMBARDEMENT AB", "Er wendet sich dir zu!", 1.8, d.hud_color, true)
+	hud.show_message("ZERSTÖRER BRICHT BOMBARDEMENT AB", "Er wendet sich dir zu!", 1.8, UITheme.AMBER, true)
 
 
 func _on_planet_saved(p: PlanetData) -> void:
@@ -661,7 +668,12 @@ func bombs_allowed() -> bool:
 ## Verteidiger steigen in Wellen auf (fighters_per_wave), bis der Bestand des Planeten aufgebraucht ist.
 func _update_defender_waves(delta: float) -> void:
 	# Verteidiger schützen Städte: ohne Städte steigen keine neuen Wellen mehr auf
-	if _fighters_alive() > 0 or planet.defenders <= 0 or planet.alive_cities() == 0:
+	if planet.alive_cities() == 0:
+		return
+	if planet.defenders <= 0:
+		_update_reinforcements(delta)
+		return
+	if _fighters_alive() > 0:
 		return
 	if wave_timer < 0.0:
 		wave_timer = Config.enemy_defender_wave_delay   # [Vorgabe] kaum Pause: keine Zeit zum Bomben
@@ -671,19 +683,44 @@ func _update_defender_waves(delta: float) -> void:
 	wave_timer = -1.0
 	wave += 1
 	var n := mini(Config.fighters_per_wave, planet.defenders)
+	_spawn_defenders(n, false)
+	Audio.sfx("wave_incoming", -2.0)
+	hud.show_message("VERTEIDIGER IM ANFLUG", "%d Fighter · Bestand %d" % [n, planet.defenders], 1.6, UITheme.FIGHTER_COLOR, true)
+
+
+## [Vorgabe] Verteidiger vernichtet: gelegentlich trifft Verstärkung ein (1–3 Fighter), solange Städte stehen.
+func _update_reinforcements(delta: float) -> void:
+	if not Config.enemy_reinforce_enabled or _fighters_alive() > 0:
+		return
+	if _reinforce_t < 0.0:
+		_reinforce_t = randf_range(Config.enemy_reinforce_interval_min, maxf(Config.enemy_reinforce_interval_min, Config.enemy_reinforce_interval_max))
+	_reinforce_t -= delta
+	if _reinforce_t > 0.0:
+		return
+	_reinforce_t = -1.0
+	var n := randi_range(Config.enemy_reinforce_min, maxi(Config.enemy_reinforce_min, Config.enemy_reinforce_max))
+	if n <= 0:
+		return
+	_spawn_defenders(n, true)
+	Audio.sfx("wave_incoming", -2.0)
+	hud.show_message("VERSTÄRKUNG IM ANFLUG", "%d Fighter" % n, 1.6, UITheme.FIGHTER_COLOR, true)
+
+
+func _spawn_defenders(n: int, reinforcement: bool) -> void:
 	var cb := camera.global_transform.basis
 	for i in n:
 		var f := Fighter.new()
 		f.planet_mode = true
 		f.fire_rate_factor = Config.enemy_home_fire_rate_factor if planet.is_home else Config.enemy_defender_fire_rate_factor
 		f.burst_shots = Config.enemy_home_burst_shots if planet.is_home else Config.enemy_defender_burst_shots
+		f.damage = Config.enemy_fighter_damage
 		f.setup(self, null)
+		if reinforcement:
+			f.set_meta("reinforcement", true)
 		var local := Vector3(randf_range(-70, 70), 0, -randf_range(180, 240))
 		var wp := camera.global_position + cb * local
 		wp.y = Config.planet_altitude + randf_range(0, 6)
 		add_enemy(f, wp)
-	Audio.sfx("wave_incoming", -2.0)
-	hud.show_message("VERTEIDIGER IM ANFLUG", "%d Fighter · Bestand %d" % [n, planet.defenders], 1.6, UITheme.FIGHTER_COLOR, true)
 
 
 func _build_marker() -> void:

@@ -41,8 +41,8 @@ var energy_warning_reminder := 15.0     ## [FREI] danach nur noch eine Erinnerun
 # ---------------------------------------------------------------------------------------------
 #  Hyperraumsprung
 # ---------------------------------------------------------------------------------------------
-var jump_cost_min := 3.0                ## [FREI] Mindestkosten eines Sprungs
-var jump_cost_max := 15.0               ## [VERMUTET] im Heimatsystem bis ca. 15 %
+var jump_cost_min := 2.5                ## [FREI] Mindestkosten eines Sprungs (bis 0.10.1: 3,0)
+var jump_cost_max := 12.0               ## [VERMUTET] im Heimatsystem bis ca. 12 % (bis 0.10.1: 15 – nach Spieltest "einen Tick zu energiefressend")
 var jump_cost_distance_ref := 850.0     ## [FREI] Kartendistanz, bei der jump_cost_max erreicht wird
 var jump_can_kill := false              ## [FREI] false = ein Sprung lässt mindestens jump_min_energy_left übrig (kein Softlock)
 var jump_min_energy_left := 1.0         ## [FREI]
@@ -80,11 +80,11 @@ var evasion_hit_factor := 0.55          ## [FREI] Trefferchance des Gegners × F
 var laser_fire_interval := 0.13         ## [ORIGINAL] Bordlaser: schnelle Schussfolge
 var laser_speed := 400.0                ## [FREI]
 var laser_range := 420.0                ## [FREI]
-var laser_hit_tolerance := 1.4          ## [FREI] zusätzlicher Trefferradius (m) – macht Zielen fairer
+var laser_hit_tolerance := 0.6          ## [FREI] zusätzlicher Trefferradius (m) – macht Zielen fairer (kleiner = schwerer; bis 0.10.1: 1,4)
 var ion_cooldown := 3.0                 ## [ORIGINAL] Ionen-Kanone: nur 1 Schuss alle 3 Sekunden
 var ion_speed := 250.0                  ## [FREI]
 var ion_range := 760.0                  ## [FREI]
-var ion_hit_tolerance := 2.5            ## [FREI]
+var ion_hit_tolerance := 1.0            ## [FREI] (bis 0.10.1: 2,5)
 var auto_weapon_switch := true          ## [FREI, Vorschlag automatisch] Waffe passend zum anvisierten Gegnertyp
 var laser_hurts_destroyers := false     ## [FREI] Laser prallt an Zerstörern/Flaggschiff ab
 var ion_hurts_fighters := true          ## [FREI] Ionen-Kugel zerstört auch Fighter (ineffizient)
@@ -96,11 +96,14 @@ var fighter_points := 50                ## [ORIGINAL]
 var fighters_per_wave := 3              ## [ORIGINAL] Dreierwellen
 var wave_delay := 2.2                   ## [FREI] Pause zwischen Wellen
 var fighter_speed := 46.0               ## [FREI] m/s
+var fighter_hit_radius := 2.9           ## [FREI] Trefferradius eines Fighters (m), dazu laser_hit_tolerance (bis 0.10.1: 3,6)
+var fighter_orbit_speed_min := 0.65     ## [FREI] Tempo des Kreisens um das Fadenkreuz (rad/s) – höher = schwerer zu treffen (bis 0.10.1: 0,5)
+var fighter_orbit_speed_max := 1.5      ## [FREI] (bis 0.10.1: 1,15)
 var fighter_steer := 2.4                ## [FREI] Wendigkeit
 var fighter_distance_min := 34.0        ## [FREI] Abstand beim Kreisen um das Fadenkreuz
 var fighter_distance_max := 78.0        ## [FREI]
 var fighter_orbit_angle_min := 3.0      ## [ORIGINAL] fliegen meist um das Fadenkreuz herum (Winkelabstand, Grad)
-var fighter_orbit_angle_max := 17.0     ## [FREI]
+var fighter_orbit_angle_max := 23.0     ## [FREI] (bis 0.10.1: 17)
 var fighter_flyover_min := 7.0          ## [ORIGINAL] Überflug (nach oben, nie darunter) – Intervall min
 var fighter_flyover_max := 15.0         ## [FREI] Intervall max
 var fighter_fire_min := 3.6             ## [FREI] Pause zwischen zwei Feuerstößen pro Fighter (s)
@@ -112,7 +115,7 @@ var fighter_burst_gap := 0.18           ## [FREI] Abstand der Schüsse im Feuers
 var fighter_fire_range := 230.0         ## [FREI] max. Schussdistanz (m) – deckt den Anflug ab
 var fighter_fire_cone := 38.0           ## [FREI] max. Winkel zur Spieler-Blickachse, in dem gefeuert wird (Grad)
 var fighter_hit_chance := 0.45          ## [FREI]
-var fighter_damage := 1.8               ## [ORIGINAL] Treffer kostet sehr wenig Energie
+var fighter_damage := 1.3               ## [ORIGINAL] Treffer kostet sehr wenig Energie (bis 0.10.1: 1,8)
 var fighter_shot_speed := 95.0          ## [FREI]
 
 # ---------------------------------------------------------------------------------------------
@@ -120,18 +123,27 @@ var fighter_shot_speed := 95.0          ## [FREI]
 # ---------------------------------------------------------------------------------------------
 var destroyer_points := [500, 750, 1000]            ## [ORIGINAL]
 var destroyer_shields := [1, 2, 3]                  ## [ORIGINAL] Treffer nötig = Schilde + 1 (2/3/4)
-var destroyer_osc_amplitude := [7.0, 10.0, 13.0]    ## [ORIGINAL qualitativ] Hin-und-her-Bewegung (Grad) langsam/schneller/noch schneller
-var destroyer_osc_speed := [0.32, 0.5, 0.72]        ## [ORIGINAL qualitativ] Bewegungstempo
-var destroyer_damage := [9.0, 11.0, 13.0]           ## [VERMUTET] ca. 7–15 % Energieverlust pro Treffer
-var destroyer_fire_interval := [6.0, 5.2, 4.5]      ## [FREI]
+var destroyer_osc_amplitude := [11.5, 14.5, 15.5]   ## [ORIGINAL qualitativ] Hin-und-her-Bewegung (Grad) langsam/schneller/noch schneller (bis 0.10.1: 7/10/13)
+var destroyer_osc_speed := [0.72, 0.78, 0.8]        ## [ORIGINAL qualitativ] Bewegungstempo (bis 0.10.1: 0,32/0,5/0,72)
+var destroyer_damage := [5.5, 6.5, 7.5]             ## [VERMUTET] Energieverlust pro Treffer (bis 0.10.1: 9/11/13 – Zerstörer leben jetzt länger und schießen öfter)
+var destroyer_fire_interval := [11.0, 10.0, 9.0]    ## [FREI] (bis 0.10.1: 6/5,2/4,5)
 var destroyer_first_fire_min := 0.45                ## [FREI] erster Schuss nach Erscheinen = Intervall × 0,45–0,7
 var destroyer_first_fire_max := 0.7                 ## [FREI] (vorher 0,6–0,9: blaue waren oft vernichtet, bevor sie schossen)
-var destroyer_hit_chance := 0.72                    ## [FREI]
+var destroyer_hit_chance := 0.65                    ## [FREI] (bis 0.10.1: 0,72)
 var destroyer_shot_speed := 72.0                    ## [FREI]
 var destroyer_offscreen_margin := 11.0              ## [ORIGINAL] steht knapp außerhalb des Sichtfelds (Grad jenseits des Bildrands)
-var destroyer_distance := 88.0                      ## [FREI]
+var destroyer_distance := 110.0                     ## [FREI] (bis 0.10.1: 88 – weiter weg = kleineres Ziel)
 var destroyer_next_delay := 2.6                     ## [ORIGINAL] Zerstörer kommen nacheinander
 var destroyer_size_scale := 1.25                    ## [FREI] Modellgröße
+## [FREI] Trefferzone der Zerstörer: Ellipsoid um den Rumpf (= sichtbare Schildblase); 1.0 = eng am Rumpf.
+## (bis 0.10.1: großzügige Kugel – "zu leicht zu treffen"; 0.10.2: Ellipsoid × 0,9)
+var destroyer_hitbox_scale := 0.9
+## [FREI] Ausweichen: fliegt eine Ionen-Kugel auf einen Zerstörer zu, weicht er mit dieser Chance aus [blau, grün, rot]
+## (neu in 0.10.2; die roten schwanken schon von sich aus am stärksten und weichen daher seltener aus)
+var destroyer_dodge_chance := [0.62, 0.56, 0.32]
+var destroyer_dodge_angle := 12.0                   ## [FREI] Ausweichweg (Grad)
+var destroyer_dodge_reaction_min := 0.04            ## [FREI] Reaktionszeit (s)
+var destroyer_dodge_reaction_max := 0.12            ## [FREI]
 
 # ---------------------------------------------------------------------------------------------
 #  Flaggschiff
@@ -139,8 +151,8 @@ var destroyer_size_scale := 1.25                    ## [FREI] Modellgröße
 var flagship_points := 5000             ## [ORIGINAL]
 var flagship_charge_time := 13.0        ## [ORIGINAL] lange Vorlaufzeit; Quadrat wird langsam heller
 var flagship_vulnerable_time := 2.0     ## [ORIGINAL] nur kurz vor dem Schuss verwundbar
-var flagship_cooldown := 4.5            ## [FREI] Pause nach dem Schuss
-var flagship_damage := 35.0             ## [VERMUTET] gut ein Drittel der Energie
+var flagship_cooldown := 14.0           ## [FREI] Pause nach dem Schuss (bis 0.10.1: 4,5)
+var flagship_damage := 20.0             ## [VERMUTET] ein Fünftel der Energie (bis 0.10.1: 35)
 var flagship_hit_chance := 0.9          ## [FREI] (Ausweichen halbiert)
 var flagship_shot_speed := 115.0        ## [FREI]
 var flagship_distance := 195.0          ## [FREI]
@@ -222,8 +234,9 @@ var enemy_city_count_max := 8           ## [FREI, Vorgabe]
 var enemy_home_city_count := 12         ## [FREI, Vorgabe] … die feindliche Heimatwelt 12
 var enemy_city_points := 5000           ## [FREI, Vorgabe] Punkte je zerbombter Feindstadt
 var victory_all_enemy_cities := true    ## [FREI, Vorgabe] Sieg erst, wenn ALLE Städte im Feindsystem zerstört sind (false = nur die Heimatwelt)
-## Empfangskomitee bei JEDEM Sprung ins Feindsystem: nur Fighter (keine Zerstörer/Flaggschiffe)
+## Empfangskomitee am Sprungpunkt des Feindsystems (nur einmal, siehe reception_once): nur Fighter (keine Zerstörer/Flaggschiffe)
 var reception_fighter_count := 12       ## [FREI, Vorgabe] 12 Fighter = 4 Wellen à 3
+var reception_once := true              ## [FREI, Vorgabe] nur EIN Empfangskomitee: abgeschossene Fighter kommen nicht wieder (false = bei jedem Sprung neu)
 var reception_fire_rate_factor := 2.0   ## [FREI, Vorschlag] deutlich aggressiver: doppelte Feuerrate …
 var reception_burst_shots := 2          ## [FREI, Vorschlag] … und Doppelschuss je Feuerstoß
 ## Verteidiger der Feindstädte: fester Bestand je Planet, Wellen à fighters_per_wave, KEINE Regeneration.
@@ -236,8 +249,18 @@ var enemy_defender_fire_rate_factor := 2.5   ## [FREI, Vorgabe "heftiger Beschus
 var enemy_defender_burst_shots := 2     ## [FREI, Vorgabe] Schüsse je Feuerstoß der Verteidiger (2 = Doppelschuss)
 var enemy_home_fire_rate_factor := 3.0  ## [FREI] dasselbe für die Verteidiger der Heimatwelt
 var enemy_home_burst_shots := 2         ## [FREI]
+## [FREI] Schaden je Treffer der Fighter im Feindsystem (Empfangskomitee, Verteidiger, Verstärkung), < 0 = fighter_damage.
+## Bleibt beim Wert von 0.10.1: Die Senkung von fighter_damage in 0.10.2 galt den Kämpfen gegen Schwadrone.
+var enemy_fighter_damage := 1.8
 var enemy_defender_wave_delay := 1.0    ## [FREI, Vorgabe] Pause bis zur nächsten Verteidiger-Welle (s) – zwischen den Wellen bleibt kaum Zeit zum Bomben
 var enemy_defender_first_wave := 1.5    ## [FREI] erste Welle nach der Ankunft auf dem Planeten (s)
+## [FREI, Vorgabe] Sind die Verteidiger eines Planeten vernichtet, kommt gelegentlich Verstärkung (1–3 Fighter),
+## solange dort noch Städte stehen – so lässt sich ein Planet nicht in einem Zug "durchbomben".
+var enemy_reinforce_enabled := true
+var enemy_reinforce_interval_min := 14.0     ## [FREI] Abstand zweier Verstärkungen (s), gezählt ab der letzten abgeschossenen
+var enemy_reinforce_interval_max := 26.0     ## [FREI]
+var enemy_reinforce_min := 1                 ## [FREI, Vorgabe] Fighter je Verstärkung
+var enemy_reinforce_max := 3                 ## [FREI, Vorgabe]
 ## Schwadron-Produktion: Schwadrone starten sichtbar von äußeren Planeten mit intakten Städten und fliegen
 ## zum Sprungpunkt ins Helion-System. Jede zerstörte Stadt auf einem äußeren Planeten verlangsamt die Produktion,
 ## ohne Städte auf den äußeren Planeten kommt kein neues Schwadron mehr (Heimatwelt produziert nicht).
@@ -304,6 +327,10 @@ func _copy(v: Variant) -> Variant:
 ## Lädt balance.cfg (neben der .exe/Binärdatei, danach user://) und überschreibt passende Werte.
 func _load_overrides() -> void:
 	var paths := [OS.get_executable_path().get_base_dir().path_join("balance.cfg"), "user://balance.cfg"]
+	# Testhilfe: zusätzliche Datei per Kommandozeile ("-- --balance=/pfad/datei.cfg"), z. B. für Balancing-Läufe
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--balance="):
+			paths.append(a.substr(10))
 	for path in paths:
 		if not FileAccess.file_exists(path):
 			continue

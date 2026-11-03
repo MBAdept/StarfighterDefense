@@ -304,7 +304,7 @@ func _enter_location(kind: int, id: int) -> void:
 				GameState.set_player_location(GameState.Loc.SQUADRON, id)
 				_set_scene(SpaceCombat.create_squadron(sq), State.SPACE)
 		GameState.Loc.ENEMY_SYSTEM:
-			# Ankunft im Feindsystem: jedes Mal ein Empfangskomitee
+			# Ankunft im Feindsystem: Empfangskomitee, solange es noch Fighter hat (Config.reception_once)
 			GameState.enter_enemy_system()
 			_set_scene(SpaceCombat.create_reception(), State.SPACE)
 		GameState.Loc.HOME_SYSTEM:

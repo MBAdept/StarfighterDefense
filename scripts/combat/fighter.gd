@@ -23,11 +23,12 @@ var _burst_t := 0.0
 ## Schüsse je Feuerstoß = burst_shots (< 0: Config.fighter_burst_shots). Vor add_enemy() setzen.
 var fire_rate_factor := 1.0
 var burst_shots := -1
+var damage := -1.0   ## Energieverlust je Treffer (< 0: Config.fighter_damage), z. B. Config.enemy_fighter_damage
 
 
 func _ready() -> void:
 	kind = Kind.FIGHTER
-	hit_radius = 3.6
+	hit_radius = Config.fighter_hit_radius
 	hud_color = UITheme.FIGHTER_COLOR
 	display_name = "FIGHTER"
 	model = Assets.model("fighter")
@@ -42,7 +43,7 @@ func _ready() -> void:
 
 
 func _retune() -> void:
-	orbit_speed = randf_range(0.5, 1.15) * (1.0 if randf() < 0.5 else -1.0)
+	orbit_speed = randf_range(Config.fighter_orbit_speed_min, Config.fighter_orbit_speed_max) * (1.0 if randf() < 0.5 else -1.0)
 	orbit_angle = randf_range(Config.fighter_orbit_angle_min, Config.fighter_orbit_angle_max)
 	orbit_dist = randf_range(Config.fighter_distance_min, Config.fighter_distance_max)
 	retune_timer = randf_range(2.5, 5.0)
@@ -148,7 +149,7 @@ func _fire_shot() -> void:
 	# abwechselnd linke/rechte Bordkanone
 	var gun := Assets.find_node_named(model, "Gun_L" if _burst_left % 2 == 0 else "Gun_R")
 	var from := (gun as Node3D).global_position if gun else global_position
-	combat.shots.fire_enemy(ShotSystem.Kind.E_FIGHTER, from, Config.fighter_damage, Config.fighter_hit_chance, Config.fighter_shot_speed, self)
+	combat.shots.fire_enemy(ShotSystem.Kind.E_FIGHTER, from, damage if damage >= 0.0 else Config.fighter_damage, Config.fighter_hit_chance, Config.fighter_shot_speed, self)
 	Audio.sfx_3d("enemy_shot_fighter", combat, from, 0.0, 0.06, 0, 70.0)
 
 

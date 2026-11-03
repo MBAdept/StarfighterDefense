@@ -20,7 +20,7 @@ Verteidige das Helion-System. Feindliche Schwadrone kommen aus dem Feindsystem *
 Am Ende steht immer eine **Auswertung**: bei Sieg, Game Over und vorzeitigem Abbruch. Dazu gibt es eine lokale Highscore-Liste.
 
 1. **Orbit-Start**: Wehre über dem Heimatplaneten Halcyon 9 (oder 12) Fighter in Dreierwellen ab. Danach ist die Karte freigeschaltet.
-2. **Systemkarte (Leertaste)**: Ziel wählen (Planet, Station, Schwadron) und springen. Ein Sprung kostet Energie, je weiter, desto mehr (3–15 %).
+2. **Systemkarte (Leertaste)**: Ziel wählen (Planet, Station, Schwadron) und springen. Ein Sprung kostet Energie, je weiter, desto mehr (2,5–12 %).
 3. **Weltraumkampf**: Erst die Fighter (Bordlaser), danach die Zerstörer nacheinander (Ionen-Kanone). Sie stehen knapp außerhalb des Sichtfelds, also links oder rechts suchen. Ein Flaggschiff kann zusätzlich auftauchen.
 4. **Planetenkampf**: Die Zerstörer schweben über Städten und bombardieren sie. Im Scanner blinkt die bombardierte Stadt. Sind alle Zerstörer vernichtet, ist der Planet gerettet.
 5. **Raumstation**: Andocken, auftanken (10 %/s in 5-%-Schritten) und **Bomben nachladen**. Wird die Station angegriffen, erst die Fighter vernichten.
@@ -29,13 +29,16 @@ Am Ende steht immer eine **Auswertung**: bei Sieg, Game Over und vorzeitigem Abb
 ## Das Feindsystem (taktischer Teil)
 
 - **Hinspringen**: Galaxie oben links auf der Karte wählen. Hin- und Rücksprung kosten **je 20 % Energie** und dauern **dreimal so lange** (roter Hyperraum).
-- **Empfangskomitee**: Bei *jedem* Sprung hinein warten **12 Fighter in 4 Wellen**. Sie schießen doppelt so oft und mit Doppelschuss. Zerstörer und Flaggschiffe sind nicht dabei. Solange das Komitee kämpft, ist auf der Karte nur der Rücksprung möglich. Danach herrscht Ruhe am Sprungpunkt.
-- **Feindkarte**: Stern Vorrhal und 5 Planeten. Die Heimatwelt Xhal liegt innen und hat 12 Städte. Die 4 äußeren Planeten (Kethra, Uzhul, Drauth, Myrrax) haben je 6–8 Städte. Unten rechts liegt der **Rücksprungpunkt** nach Helion, als Symbol dient unser Stern. Sprünge innerhalb des Feindsystems kosten wie gewohnt 3–15 % je nach Entfernung.
+- **Empfangskomitee**: Beim ersten Sprung hinein warten **12 Fighter in 4 Wellen**. Sie schießen doppelt so oft und mit Doppelschuss. Zerstörer und Flaggschiffe sind nicht dabei. Solange das Komitee kämpft, ist auf der Karte nur der Rücksprung möglich.
+  - Es gibt **nur ein Empfangskomitee**: Abgeschossene Fighter kommen nicht wieder. Wer vorher zurückspringt, trifft beim nächsten Mal nur noch auf den Rest.
+  - Sind alle 12 vernichtet, bleibt der Sprungpunkt dauerhaft frei. Mit `reception_once=false` kommt das Komitee wieder bei jedem Sprung.
+- **Feindkarte**: Stern Vorrhal und 5 Planeten. Die Heimatwelt Xhal liegt innen und hat 12 Städte. Die 4 äußeren Planeten (Kethra, Uzhul, Drauth, Myrrax) haben je 6–8 Städte. Unten rechts liegt der **Rücksprungpunkt** nach Helion, als Symbol dient unser Stern. Sprünge innerhalb des Feindsystems kosten wie gewohnt 2,5–12 % je nach Entfernung.
 - **Schwadron-Nachschub**: Von den äußeren Planeten starten sichtbar neue Schwadrone (Ring „START!“). Sie fliegen zum Sprungpunkt und springen ins Helion-System, sofern dort weniger als 4 unterwegs sind, sonst warten sie. Diese Schwadrone haben Zerstörer und eventuell ein Flaggschiff. Du kannst sie anwählen und **abfangen**.
 - **Produktion**: Jede zerstörte Stadt auf einem äußeren Planeten verlangsamt den Nachschub spürbar (+15 % Abstand je Stadt). Ohne Städte auf den äußeren Planeten kommen **keine neuen Schwadrone** mehr. Die Heimatwelt baut keine Schwadrone.
 - **Feindplaneten angreifen**: Die Städte werden von Fightern verteidigt. Außenplaneten haben 9–12, die Heimatwelt 18. Sie kommen in Dreierwellen dicht hintereinander und **regenerieren sich nicht**.
   - Die Verteidiger nehmen dein Schiff so heftig unter Beschuss, dass zum Bomben keine Zeit bleibt: 2,5-fache Feuerrate mit Doppelschuss, auf der Heimatwelt sogar 3-fach.
-  - Also erst die Verteidiger mit dem Bordlaser abwehren, dann in Ruhe bombardieren.
+  - Also erst die Verteidiger mit dem Bordlaser abwehren, dann bombardieren.
+  - Ist der Verteidiger-Bestand vernichtet, trifft trotzdem **gelegentlich Verstärkung** ein: 1–3 Fighter, etwa alle 14–26 s, solange der Planet noch Städte hat. Durchbomben ohne Unterbrechung geht also nicht.
 - **Bomben**: Du hast **10 Bomben**, das reicht für etwa einen äußeren Planeten pro Angriff. Auf Feindplaneten wechselst du mit **Q / Tab** (Gamepad X) zwischen Bordlaser und Bomben. Im Bombenmodus neigt sich der Blick leicht nach unten. Eine **Aufschlagmarke** am Boden zeigt, wo eine jetzt abgeworfene Bombe einschlägt. Die Bombe fällt ballistisch und fliegt umso weiter, je schneller du fliegst (ca. 55–140 m voraus).
   - Wird die Marke grün, liegt eine Stadt im Trefferkreis: FEUER.
   - **1 Treffer zerstört eine Stadt** und bringt **5000 Punkte**. Ein Fehlwurf ist verloren.
@@ -43,7 +46,9 @@ Am Ende steht immer eine **Auswertung**: bei Sieg, Game Over und vorzeitigem Abb
   - Bomben gibt es nur beim Andocken an **eigenen Stationen** (wie Energie). Du musst also zurückspringen.
 
 Tipps:
-- **Zerstörer**: blau = 2 Treffer, grün = 3, rot = 4. Jeder Treffer nimmt eine Schildschicht weg.
+- **Zerstörer**: blau = 2 Treffer, grün = 3, rot = 4. Jeder Treffer nimmt eine Schildschicht weg. Getroffen wird nur die sichtbare Schildblase.
+  - Zerstörer schwanken stark hin und her und **weichen anfliegenden Ionen-Kugeln oft blitzschnell aus**: blaue und grüne häufiger, rote seltener (die schwanken dafür am stärksten). Nicht jeder Schuss sitzt, also dranbleiben.
+  - Auf Planeten weichen sie nicht aus.
 - **Flaggschiff**: Nur das rosa Quadrat ist verwundbar, und nur kurz vor dem eigenen Schuss, wenn es weiß-rosa leuchtet. Die Ionen-Kugel braucht Flugzeit, also leicht vorher feuern!
 - **Ausweichen**: Wer im Moment des Einschlags kräftig lenkt (auf Planeten: schnell fliegt), halbiert die Trefferchance des Gegners. Laser können anfliegende Geschosse auch abschießen.
 - **Taktik**: Kleinere Schwadrone fliegen langsamer. Ein angeschlagenes Schwadron zu verlangsamen kann klüger sein, als es ganz auszulöschen.
@@ -129,6 +134,27 @@ Eine Vorlage mit allen Werten schreibt das Spiel beim Start nach `balance_templa
 Dort liegen auch `highscores.json` und `settings.cfg`.
 
 Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automatische Waffenwahl, 9/12 Fighter im Orbit, die [VERMUTET]-Regel „Schwadron mit nur einem Zerstörer bleibt zeitweise stehen“, Schwierigkeit, Scanner-Ausrichtung, Randpfeile und Retro-Filter.
+
+## Änderungen in Version 0.10.2 (nach dem zweiten Spieltest)
+
+- **Empfangskomitee nur einmal**: Die 12 Fighter am Sprungpunkt des Feindsystems gibt es nur ein einziges Mal. Abgeschossene kommen nicht wieder. Wer vorher zurückspringt, trifft beim nächsten Mal nur noch auf den Rest. Danach ist der Sprungpunkt frei (`reception_once`).
+- **Zerstörer-Meldung ohne Farbe**: Das Popup sagt nur noch „ZERSTÖRER“ und die Richtung („<< LINKS“ / „RECHTS >>“).
+- **Zerstörer deutlich schwerer zu treffen** (der gravierendste Punkt):
+  - Die Trefferzone ist jetzt die sichtbare Schildblase statt einer großzügigen Kugel (`destroyer_hitbox_scale=0.9`, `ion_hit_tolerance` 2,5 → 1,0).
+  - Sie stehen weiter weg (88 → 110 m) und schwanken weiter und schneller hin und her.
+  - **Sie weichen anfliegenden Ionen-Kugeln aus**, nach nur 0,04–0,12 s: blau mit 62 %, grün mit 56 %, rot mit 32 % Wahrscheinlichkeit (`destroyer_dodge_chance`).
+  - Gemessen mit dem menschenähnlichen Testfahrer: Die Ionen-Kanone trifft noch etwa jedes zweite Mal (vorher fast immer). Ein Zerstörer hält etwa doppelt so lange durch.
+- **Fighter schwerer zu treffen**: kleinere Trefferzone (3,6 → 2,9 m, Laser-Toleranz 1,4 → 0,6 m). Sie kreisen schneller und weiter ums Fadenkreuz.
+- **Kämpfe dauern länger**: Ein Schwadron dauert im Schnitt etwa 70 s statt 45 s.
+- **Weniger Schaden je Kampf**:
+  - Fighter-Treffer kosten 1,3 % statt 1,8 %.
+  - Zerstörer-Treffer kosten 5,5 / 6,5 / 7,5 % statt 9 / 11 / 13 %. Zerstörer feuern etwas seltener (alle 11 / 10 / 9 s).
+  - Das Flaggschiff kostet 20 % statt 35 % und pausiert länger nach dem Schuss.
+  - Gemessen: Ein Schwadron kostet trotz längerer Kämpfe im Schnitt etwa 19 statt 29 Prozentpunkte Energie.
+  - Die Fighter im Feindsystem (Empfangskomitee, Verteidiger, Verstärkung) behalten ihren Schaden von 1,8 % je Treffer (`enemy_fighter_damage`). Die Senkung betrifft nur die Kämpfe gegen Schwadrone, damit das Bomben unter Beschuss so gefährlich bleibt wie gewünscht.
+- **Sprünge günstiger**: 2,5–12 % statt 3–15 % je nach Entfernung. Sprung ins Feindsystem und zurück bleibt bei 20 %.
+- **Verstärkung auf Feindplaneten**: Sind die Verteidiger vernichtet, treffen gelegentlich 1–3 Fighter nach (etwa alle 14–26 s), solange der Planet noch Städte hat. Ein Planet lässt sich nicht mehr in einem Zug „durchbomben“ (`enemy_reinforce_*`).
+- Alle Werte stehen in `config.gd`, jeweils mit dem alten Wert als Kommentar („bis 0.10.1: …“). Per `balance.cfg` lassen sie sich zurückdrehen, siehe `balance_beispiel.cfg`.
 
 ## Änderungen in Version 0.10.1
 

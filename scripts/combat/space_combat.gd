@@ -135,15 +135,20 @@ func _ready() -> void:
 			phase = Phase.DONE
 		Mode.RECEPTION:
 			location_name = "FEINDSYSTEM %s" % GameState.ENEMY_STAR_NAME.to_upper()
-			orbit_total = Config.reception_fighter_count
+			orbit_total = GameState.reception_size()
 			if orbit_total <= 0:
 				_reception_done(false)
+				location_sub = "Sprungpunkt · kein Empfangskomitee mehr"
+				hud.show_message("FEINDSYSTEM %s" % GameState.ENEMY_STAR_NAME.to_upper(), "Der Sprungpunkt ist frei · LEERTASTE: Feindkarte", 3.0, UITheme.CYAN)
 			else:
 				location_sub = "Sprungpunkt · EMPFANGSKOMITEE!"
 				hint_text = "Erst die Fighter abwehren  ·  LEERTASTE: Karte (nur Rücksprung)"
 				phase = Phase.FIGHTERS
 				wave_timer = 2.2
-				hud.show_message("EMPFANGSKOMITEE!", "%d Fighter – sie schießen deutlich aggressiver" % orbit_total, 3.2, UITheme.RED)
+				var sub := "%d Fighter – sie schießen deutlich aggressiver" % orbit_total
+				if Config.reception_once and orbit_total < Config.reception_fighter_count:
+					sub = "Noch %d Fighter des Empfangskomitees – sie schießen deutlich aggressiver" % orbit_total
+				hud.show_message("EMPFANGSKOMITEE!", sub, 3.2, UITheme.RED)
 				Audio.alarm(-6.0)
 
 
@@ -471,6 +476,7 @@ func _spawn_wave() -> void:
 			# [Vorgabe] deutlich aggressiver: doppelte Feuerrate und Doppelschuss
 			f.fire_rate_factor = Config.reception_fire_rate_factor
 			f.burst_shots = Config.reception_burst_shots
+			f.damage = Config.enemy_fighter_damage
 		var local := Vector3(randf_range(-55, 55) + (i - 1) * 30.0, randf_range(-12, 28), -randf_range(170, 230))
 		add_enemy(f, camera.global_position + cb * local)
 		if counted:
@@ -519,7 +525,10 @@ func _reception_done(fought: bool) -> void:
 	location_sub = "Sprungpunkt gesichert"
 	hint_text = "LEERTASTE: Feindkarte – Planeten anfliegen, Schwadrone abfangen"
 	if fought:
-		hud.show_message("EMPFANGSKOMITEE ABGEWEHRT", "Ruhe am Sprungpunkt · LEERTASTE: Feindkarte", 4.5, UITheme.GREEN)
+		var sub := "Ruhe am Sprungpunkt · LEERTASTE: Feindkarte"
+		if Config.reception_once:
+			sub = "Der Sprungpunkt bleibt ab jetzt frei · LEERTASTE: Feindkarte"
+		hud.show_message("EMPFANGSKOMITEE VERNICHTET" if Config.reception_once else "EMPFANGSKOMITEE ABGEWEHRT", sub, 4.5, UITheme.GREEN)
 		Audio.sfx("squadron_destroyed")
 	Audio.play_music(music_track(), 3.0)
 
@@ -591,9 +600,8 @@ func _spawn_destroyer(dd: DestroyerData) -> void:
 	d.anchor_pitch = clampf(pitch * 0.5 + deg_to_rad(randf_range(-6, 6)), deg_to_rad(-25), deg_to_rad(25))
 	d.dist = Config.destroyer_distance
 	add_enemy(d, camera.global_position + dir_from_angles(d.anchor_yaw, d.anchor_pitch) * d.dist)
-	var col: Color = UITheme.DESTROYER_COLORS[dd.color]
-	hud.show_message("ZERSTÖRER (%s)" % UITheme.DESTROYER_NAMES[dd.color].to_upper(),
-		("<< LINKS" if side > 0.0 else "RECHTS >>") + "  ·  %d Treffer nötig" % dd.hits_left, 2.2, col)
+	# [Vorgabe] nur "ZERSTÖRER" – Farbe (und damit die nötigen Treffer) erkennt man an der Schildfarbe
+	hud.show_message("ZERSTÖRER", "<< LINKS" if side > 0.0 else "RECHTS >>", 2.2, UITheme.AMBER)
 
 
 func _spawn_flagship() -> void:
@@ -618,6 +626,8 @@ func _on_enemy_removed(e: Enemy) -> void:
 		if mode == Mode.ORBIT or mode == Mode.RECEPTION:
 			orbit_killed += 1
 			GameState.on_fighter_killed(null)
+			if mode == Mode.RECEPTION:
+				GameState.on_reception_fighter_killed()
 		else:
 			GameState.on_fighter_killed(squadron)
 	elif e.kind == Enemy.Kind.FLAGSHIP:

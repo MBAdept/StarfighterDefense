@@ -546,7 +546,7 @@ func _draw_status(o_right: Vector2, _vp: Vector2, _planet: bool) -> void:
 		elif sc.squadron and sc.squadron.state != SquadronData.State.DESTROYED and not sc.is_docking():
 			lines.append(["FIGHTER", "%d" % sc.squadron.fighters, UITheme.FIGHTER_COLOR])
 			if sc.mode == SpaceCombat.Mode.SQUADRON:
-				lines.append(["ZERSTÖRER", _destroyer_string(sc.squadron), UITheme.AMBER])
+				lines.append(["ZERSTÖRER", str(sc.squadron.destroyers.size()), UITheme.AMBER, sc.squadron.destroyer_colors()])
 		if fl:
 			lines.append(["FLAGGSCHIFF", "AKTIV", UITheme.PINK])
 	elif combat is PlanetCombat and (combat as PlanetCombat).enemy_mode:
@@ -559,22 +559,20 @@ func _draw_status(o_right: Vector2, _vp: Vector2, _planet: bool) -> void:
 		lines.append(["STÄDTE", "%d / %d" % [pc.planet.alive_cities(), pc.planet.cities.size()], UITheme.CYAN])
 		if pc.squadron and pc.squadron.state != SquadronData.State.DESTROYED:
 			lines.append(["FIGHTER", "%d" % pc.squadron.fighters, UITheme.FIGHTER_COLOR])
-			lines.append(["ZERSTÖRER", _destroyer_string(pc.squadron), UITheme.AMBER])
+			lines.append(["ZERSTÖRER", str(pc.squadron.destroyers.size()), UITheme.AMBER, pc.squadron.destroyer_colors()])
 	if lines.is_empty():
 		lines.append(["KONTAKTE", "KEINE", UITheme.GREEN])
 	for i in lines.size():
 		var l: Array = lines[i]
 		_text(Vector2(x, y + 48 + i * 28), l[0], _f_body, 22, Color(UITheme.TEXT_DIM, 0.95))
 		_text(Vector2(x + 170, y + 48 + i * 28), l[1], _f_mono, 24, l[2])
-
-
-func _destroyer_string(sq: SquadronData) -> String:
-	if sq.destroyers.is_empty():
-		return "0"
-	var parts := []
-	for d in sq.destroyers:
-		parts.append(["B", "G", "R"][d.color])
-	return "%d  (%s)" % [sq.destroyers.size(), " ".join(parts)]
+		if l.size() > 3:
+			# Zerstörer als farbige Kästchen (wie auf der Karte) – die Farbe wird nicht ausgeschrieben
+			var cols: Array = l[3]
+			for k in cols.size():
+				var r := Rect2(Vector2(x + 210 + k * 22, y + 31 + i * 28), Vector2(16, 16))
+				draw_rect(r, UITheme.DESTROYER_COLORS[int(cols[k])])
+				draw_rect(r, Color(1, 1, 1, 0.5), false, 1.0)
 
 
 func _draw_top(vp: Vector2) -> void:

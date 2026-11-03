@@ -30,13 +30,20 @@ var beam: MeshInstance3D
 var engage_timer := 0.0
 var _move_from := Vector3.ZERO
 var _land_from := Vector3.ZERO
+# Trefferzone (Ellipsoid im lokalen Raum) und Ausweichen
+var _hit_center := Vector3.ZERO
+var _hit_radii := Vector3.ONE * 8.0
+var _dodge := Vector2.ZERO        ## aktueller Ausweichversatz (Grad; x = Gieren, y = Nicken)
+var _dodge_goal := Vector2.ZERO
+var _dodge_t := 0.0
+var _dodge_delay := 0.0
 
 
 func _ready() -> void:
 	kind = Kind.DESTROYER
 	var c: int = data.color
 	hud_color = UITheme.DESTROYER_COLORS[c]
-	display_name = "ZERSTÖRER " + UITheme.DESTROYER_NAMES[c].to_upper()
+	display_name = "ZERSTÖRER"   # Farbe wird nicht genannt – sie zeigt sich an der Schildfarbe
 	model = Assets.model("destroyer")
 	model.scale = Vector3.ONE * Config.destroyer_size_scale
 	add_child(model)
@@ -45,17 +52,21 @@ func _ready() -> void:
 	gun_node = Assets.find_node_named(model, "Gun_Main")
 	bay_node = Assets.find_node_named(model, "BombBay")
 	var aabb := _model_aabb()
-	hit_radius = clampf(maxf(aabb.size.x, aabb.size.y) * 0.55, 7.0, 16.0)
+	# [FREI] Trefferzone = Ellipsoid eng um den Rumpf; die Schildblase zeigt genau diese Form
+	var sc := Config.destroyer_size_scale
+	_hit_center = (aabb.position + aabb.size * 0.5) * sc
+	_hit_radii = (aabb.size * 0.5 * sc * 1.15 * Config.destroyer_hitbox_scale).max(Vector3.ONE * 2.0)
+	hit_radius = clampf(maxf(_hit_radii.x, _hit_radii.y), 4.0, 16.0)
 	# Schildblase
 	shield = MeshInstance3D.new()
 	var sm := SphereMesh.new()
-	var sr := maxf(aabb.size.length() * 0.55, hit_radius * 1.3)
-	sm.radius = sr
-	sm.height = sr * 2.0
+	sm.radius = 1.0
+	sm.height = 2.0
 	sm.radial_segments = 48
 	sm.rings = 24
 	shield.mesh = sm
-	shield.scale = Vector3(1.0, 0.7, 1.05)
+	shield.scale = _hit_radii * 1.05
+	shield.position = _hit_center
 	shield_mat = ShaderMaterial.new()
 	shield_mat.shader = load("res://shaders/shield.gdshader")
 	shield_mat.set_shader_parameter("shield_color", hud_color)
@@ -120,8 +131,9 @@ func _process_space(delta: float) -> void:
 	var c := data.color
 	var amp: float = Config.by_color(Config.destroyer_osc_amplitude, c)
 	var w: float = Config.by_color(Config.destroyer_osc_speed, c)
-	var yaw := anchor_yaw + deg_to_rad(amp) * sin(w * t + phase_off)
-	var pitch := clampf(anchor_pitch + deg_to_rad(amp * 0.5) * sin(w * 1.37 * t + phase_off * 2.0), deg_to_rad(-40), deg_to_rad(40))
+	_update_dodge(delta)
+	var yaw := anchor_yaw + deg_to_rad(amp) * sin(w * t + phase_off) + deg_to_rad(_dodge.x)
+	var pitch := clampf(anchor_pitch + deg_to_rad(amp * 0.5) * sin(w * 1.37 * t + phase_off * 2.0) + deg_to_rad(_dodge.y), deg_to_rad(-40), deg_to_rad(40))
 	var cp := combat.camera.global_position
 	var new_pos := cp + CombatBase.dir_from_angles(yaw, pitch) * dist
 	velocity = (new_pos - global_position) / maxf(delta, 0.001)
@@ -131,6 +143,43 @@ func _process_space(delta: float) -> void:
 	var lateral := velocity - to_player.normalized() * velocity.dot(to_player.normalized())
 	face_dir(to_player + lateral * 0.6, Vector3.UP)
 	_update_fire(delta)
+
+
+## [FREI] Ionen-Kugel im Anflug: mit Chance je Farbe (destroyer_dodge_chance) kurz zur Seite ausweichen.
+func on_ion_incoming() -> void:
+	if planet_mode or not alive or _dodge_t > 0.0 or _dodge_delay > 0.0:
+		return
+	if randf() >= float(Config.by_color(Config.destroyer_dodge_chance, data.color)):
+		return
+	var a := randf() * TAU
+	var amt := Config.destroyer_dodge_angle * randf_range(0.75, 1.0)
+	_dodge_goal = Vector2(cos(a), sin(a) * 0.6) * amt
+	_dodge_delay = randf_range(Config.destroyer_dodge_reaction_min, Config.destroyer_dodge_reaction_max)
+	_dodge_t = 2.0
+
+
+func _update_dodge(delta: float) -> void:
+	if _dodge_delay > 0.0:
+		_dodge_delay -= delta
+		return
+	if _dodge_t > 0.0:
+		_dodge_t -= delta
+		_dodge = _dodge.lerp(_dodge_goal, 1.0 - exp(-7.0 * delta))   # schneller Seitenschritt
+	else:
+		_dodge = _dodge.lerp(Vector2.ZERO, 1.0 - exp(-0.7 * delta))  # langsam zurück auf die Bahn
+
+
+## Treffertest gegen das Rumpf-Ellipsoid (lokaler Raum).
+func segment_hit(p0: Vector3, p1: Vector3, tolerance: float) -> Dictionary:
+	var r := _hit_radii + Vector3.ONE * tolerance
+	if planet_mode:
+		r.y = maxf(r.y, 8.0)   # auf Planeten kann man nicht nach oben zielen: Schwebehöhe/Schaukeln ausgleichen
+	var inv := global_transform.affine_inverse()
+	var a := (inv * p0 - _hit_center) / r
+	var b := (inv * p1 - _hit_center) / r
+	if ShotSystem._seg_sphere(a, b, Vector3.ZERO, 1.0):
+		return {"point": ShotSystem.seg_closest(p0, p1, global_position), "part": "hull"}
+	return {}
 
 
 func _update_fire(delta: float) -> void:

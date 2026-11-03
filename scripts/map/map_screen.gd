@@ -855,7 +855,11 @@ func _draw_panel(vp: Vector2) -> void:
 				can_jump = false
 			else:
 				y = _draw_enemy_summary(f, x, y, w)
-				_text(f, Vector2(x, y), "Ankunft: Empfangskomitee (%d Fighter)" % Config.reception_fighter_count, _f_body, 20, UITheme.RED)
+				var rs := GameState.reception_size()
+				if rs > 0:
+					_text(f, Vector2(x, y), "Ankunft: Empfangskomitee (%d Fighter)" % rs, _f_body, 20, UITheme.RED)
+				else:
+					_text(f, Vector2(x, y), "Ankunft: Sprungpunkt frei (kein Empfangskomitee mehr)", _f_body, 20, UITheme.GREEN)
 				y += 26
 				_text(f, Vector2(x, y), "Sprung dauert %d× so lange · Rückweg ebenfalls %d %%" % [int(Config.enemy_jump_duration_factor), int(Config.enemy_jump_cost)], _f_body, 19, UITheme.TEXT_DIM)
 				y += 26

@@ -89,6 +89,7 @@ var enemy_squadrons: Array = [] ## SquadronData im Feindsystem (auf dem Weg zum 
 var player_system := 0          ## 0 = Helion-System, 1 = Feindsystem
 var bombs := 15
 var reception_active := false   ## Empfangskomitee am Ankunftspunkt noch nicht abgewehrt
+var reception_left := 0         ## [Vorgabe] Fighter des (einzigen) Empfangskomitees, die noch leben (Config.reception_once)
 var production_progress := 0.0  ## 0..1 bis zum nächsten Schwadron-Start im Feindsystem
 var victory := false
 var end_kind := ""              ## "gameover" | "victory" | "abort" – für die Auswertung
@@ -136,6 +137,7 @@ func new_game() -> void:
 	player_system = 0
 	bombs = Config.bombs_max
 	reception_active = false
+	reception_left = Config.reception_fighter_count
 	production_progress = 0.0
 	victory = false
 	end_kind = ""
@@ -1098,12 +1100,23 @@ func is_player_at_enemy_planet(pid: int) -> bool:
 	return player_loc == Loc.ENEMY_PLANET and player_loc_id == pid
 
 
-## Ankunft im Feindsystem (Sprungpunkt unten rechts): dort wartet jedes Mal ein Empfangskomitee.
+## Ankunft im Feindsystem (Sprungpunkt unten rechts). [Vorgabe] Es gibt nur EIN Empfangskomitee: Seine
+## Fighter warten bei jeder Ankunft, bis alle abgeschossen sind (Config.reception_once; sonst jedes Mal neu).
 func enter_enemy_system() -> void:
 	player_system = 1
-	reception_active = true
-	stats.receptions += 1
+	reception_active = reception_size() > 0
+	if reception_active:
+		stats.receptions += 1
 	set_player_location(Loc.ENEMY_SYSTEM, -1)
+
+
+## Fighter des Empfangskomitees bei der nächsten Ankunft.
+func reception_size() -> int:
+	return reception_left if Config.reception_once else Config.reception_fighter_count
+
+
+func on_reception_fighter_killed() -> void:
+	reception_left = maxi(reception_left - 1, 0)
 
 
 ## Rücksprung ins Helion-System: Ankunft im Tiefraum am Sprungpunkt oben links.

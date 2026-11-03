@@ -13,3 +13,7 @@ __pycache__/
 *.pyc
 .DS_Store
 Thumbs.db
+# Steam-Grafik-Werkzeuge: Zwischenstände (Renderings, Cache, Vorschauen) werden von tools/steam/*.py neu erzeugt
+tools/steam/renders/
+tools/steam/cache/
+tools/steam/previews/
