@@ -501,7 +501,7 @@ func destroy_city(_idx: int) -> void:
 
 
 # ---------------------------------------------------------------------------------------------
-#  Sieg: Heimatwelt des Feindes vernichtet – kurze Siegsequenz, danach Auswertung
+#  Sieg: alle Städte im Feindsystem vernichtet – kurze Siegsequenz, danach Auswertung
 # ---------------------------------------------------------------------------------------------
 func play_victory_sequence(cb: Callable) -> void:
 	if dying or victory_mode:
@@ -514,7 +514,10 @@ func play_victory_sequence(cb: Callable) -> void:
 	Audio.play_music("victory_theme" if Audio.has_music("victory_theme") else "title_theme", 1.2)
 	Audio.sfx("planet_saved", 2.0)
 	var home := GameState.enemy_home()
-	hud.show_message("SIEG!", "%s ist gefallen – das %s-System ist gerettet!" % [home.name if home else "Die Heimatwelt", GameState.STAR_NAME], 7.0, UITheme.GREEN)
+	var what := "Alle Städte im %s-System sind zerstört" % GameState.ENEMY_STAR_NAME
+	if not Config.victory_all_enemy_cities:
+		what = "%s ist gefallen" % (home.name if home else "Die Heimatwelt")
+	hud.show_message("SIEG!", "%s – das %s-System ist gerettet!" % [what, GameState.STAR_NAME], 7.0, UITheme.GREEN)
 	location_sub = "SIEG"
 	hint_text = "Auswertung folgt …"
 	# verbliebene Gegner ziehen sich zurück (ohne Punkte/Statistik)

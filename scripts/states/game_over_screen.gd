@@ -60,7 +60,10 @@ func _ready() -> void:
 		title = "SIEG!"
 		tcol = UITheme.GREEN
 		var home := GameState.enemy_home()
-		reason = "Die feindliche Heimatwelt %s ist gefallen – das %s-System ist gerettet." % [home.name if home else "", GameState.STAR_NAME]
+		if Config.victory_all_enemy_cities:
+			reason = "Alle Städte im %s-System sind zerstört – das %s-System ist gerettet." % [GameState.ENEMY_STAR_NAME, GameState.STAR_NAME]
+		else:
+			reason = "Die feindliche Heimatwelt %s ist gefallen – das %s-System ist gerettet." % [home.name if home else "", GameState.STAR_NAME]
 	elif _kind == "abort":
 		title = "EINSATZ ABGEBROCHEN"
 		tcol = UITheme.AMBER

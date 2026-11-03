@@ -16,6 +16,11 @@ extends Node
 ##   --raid                 zusätzlich Angriffe auf das Feindsystem: mit voller Energie und Bomben hinspringen,
 ##                          Empfangskomitee abwehren, Städte bombardieren, zum Nachladen zurück (--raid_target=
 ##                          auto|home|outer, --raid_energy=80, --raid_return=35). Protokoll: RAID_* / ENEMY_SUMMARY
+##   --raid_safe            "Verteidigung zuerst" (Ziel: Sieg ohne verlorene Stadt): angreifen nur, wenn die nächste
+##                          Landung in Helion mehr als --safe_eta=150 s entfernt ist; im Feindsystem sofort zurück,
+##                          sobald eine Landung näher als --safe_return_eta=70 s rückt (auch mitten im Kampf);
+##                          zu Hause zuerst das dringendste Schwadron. --raid_intercept: im Feindsystem zusätzlich
+##                          startende Schwadrone abfangen, bevor sie nach Helion springen.
 ##
 ## Energie-Buchhaltung (in allen Modi): Sprungkosten und erlittene Treffer werden dem Schwadron
 ## zugeordnet, gegen das gerade gekämpft wird. Ausgaben (Schlüssel=Wert, für Auswertungsskripte):
@@ -42,7 +47,7 @@ var passive := false   ## nur Strategie-Simulation beobachten (kein Kampf, keine
 var human := false     ## menschenähnlicher Testfahrer (Testargument --human)
 # --- Feindsystem (--raid) ---
 var raid := false
-var raid_target := "auto"   ## auto: Heimatwelt, sobald die Bomben für alle ihre Städte reichen; sonst äußere Planeten
+var raid_target := "auto"   ## auto: äußere Planeten zuerst; die Heimatwelt, sobald die Bomben für ihre restlichen Städte reichen
 var raid_energy := 80.0     ## Mindestenergie für den Sprung ins Feindsystem
 var raid_return := 35.0     ## darunter (oder ohne Bomben) zurück nach Helion
 var _bomb_city := -1
@@ -53,6 +58,13 @@ var _bomb_city_t := 0.0        ## Zeit am aktuellen Ziel ohne Abwurf (danach and
 var _bomb_skip := -1           ## zuletzt aufgegebenes Ziel
 var _switch_t := 0.0
 var _raids := 0
+var raid_safe := false
+var raid_intercept := false
+var safe_eta := 150.0        ## s – Mindestvorlauf bis zur nächsten Landung in Helion, um einen Angriff zu beginnen
+var safe_return_eta := 70.0  ## s – im Feindsystem: Rückkehr, sobald eine Landung in Helion näher rückt
+var _safe_check_t := 0.0
+var _defend_returns := 0
+var _intercepts := 0
 var _raid := Acct.new()       ## Energieverlust im Feindsystem (Empfangskomitee, Feindplaneten, Langsprünge)
 
 # ---------------------------------------------------------------------------------------------
@@ -123,7 +135,11 @@ func apply_test_args(args: Dictionary) -> void:
 	for k in H_KNOBS:
 		if args.has(k):
 			set(k, float(args[k]))
-	raid = args.has("raid")
+	raid = args.has("raid") or args.has("raid_safe")
+	raid_safe = args.has("raid_safe")
+	raid_intercept = args.has("raid_intercept")
+	safe_eta = float(args.get("safe_eta", safe_eta))
+	safe_return_eta = float(args.get("safe_return_eta", safe_return_eta))
 	raid_target = str(args.get("raid_target", raid_target))
 	raid_energy = float(args.get("raid_energy", raid_energy))
 	raid_return = float(args.get("raid_return", raid_return))
@@ -166,6 +182,8 @@ func _process(delta: float) -> void:
 	if passive:
 		if sc is SpaceCombat and (sc as SpaceCombat).mode == SpaceCombat.Mode.ORBIT and not (sc as SpaceCombat).orbit_done:
 			(sc as SpaceCombat).debug_finish_orbit()
+		return
+	if raid_safe and _safe_interrupt(sc, delta):
 		return
 	if sc is PlanetCombat and (sc as PlanetCombat).enemy_mode:
 		if _enemy_planet(sc as PlanetCombat, delta):
@@ -585,6 +603,8 @@ func _choose_jump() -> void:
 	for tsq in GameState.squadrons:
 		if tsq.state == SquadronData.State.LANDED or tsq.state == SquadronData.State.AT_STATION:
 			threat = true
+	if raid_safe and _home_threat_eta() <= safe_eta:
+		threat = true   # Verteidigung zuerst: erst die anfliegenden Schwadrone
 	if raid and not threat and energy >= raid_energy and GameState.bombs >= mini(8, Config.bombs_max) and Config.enemy_system_enabled:
 		_raids += 1
 		print("[%s] RAID_START n=%d energy=%.1f bombs=%d enemy_cities=%d/%d" % [GameState.format_time(GameState.sim_time), _raids, energy, GameState.bombs, GameState.enemy_cities_alive(), GameState.enemy_cities_total()])
@@ -615,6 +635,14 @@ func _choose_jump() -> void:
 		for sq in GameState.squadrons:
 			if sq.state == SquadronData.State.AT_STATION:
 				target_sq = sq
+	if target_sq == null and raid_safe:
+		# Verteidigung zuerst: das Schwadron, das als nächstes landet
+		var be := INF
+		for sq in GameState.squadrons:
+			var e := _squadron_threat_eta(sq)
+			if e < be:
+				be = e
+				target_sq = sq
 	if target_sq == null:
 		var bd := INF
 		for sq in GameState.squadrons:
@@ -632,6 +660,11 @@ func _choose_jump() -> void:
 ## Feindsystem: Empfangskomitee abwarten, Planeten mit Bomben angreifen, zum Nachladen zurück.
 func _choose_enemy_jump() -> void:
 	var energy := GameState.energy
+	if raid_safe and _home_threat_eta() < safe_return_eta:
+		_defend_returns += 1
+		print("[%s] RAID_RETURN reason=defend eta=%.0f energy=%.1f bombs=%d" % [GameState.format_time(GameState.sim_time), _home_threat_eta(), energy, GameState.bombs])
+		_do_jump(GameState.Loc.HOME_SYSTEM, -1, _raid)
+		return
 	if GameState.reception_active:
 		if energy < 25.0:
 			print("[%s] RAID_RETURN reason=reception energy=%.1f" % [GameState.format_time(GameState.sim_time), energy])
@@ -639,6 +672,17 @@ func _choose_enemy_jump() -> void:
 		else:
 			Main.instance.close_map()   # weiterkämpfen
 		return
+	if raid_intercept and energy >= 55.0:
+		# startende Schwadrone abfangen, bevor sie nach Helion springen (das dem Sprungpunkt nächste zuerst)
+		var isq: SquadronData = null
+		for esq in GameState.enemy_squadrons:
+			if isq == null or esq.map_pos.distance_to(GameState.ENEMY_GATE) < isq.map_pos.distance_to(GameState.ENEMY_GATE):
+				isq = esq
+		if isq and not GameState.is_player_at_squadron(isq):
+			_intercepts += 1
+			print("[%s] RAID_INTERCEPT %s energy=%.1f" % [GameState.format_time(GameState.sim_time), isq.name, energy])
+			_do_jump(GameState.Loc.SQUADRON, isq.id, _acct_for(isq))
+			return
 	var target := _raid_planet()
 	if not raid or target == null or energy < raid_return or GameState.bombs <= 0:
 		print("[%s] RAID_RETURN energy=%.1f bombs=%d enemy_cities=%d/%d" % [GameState.format_time(GameState.sim_time), energy, GameState.bombs, GameState.enemy_cities_alive(), GameState.enemy_cities_total()])
@@ -649,6 +693,55 @@ func _choose_enemy_jump() -> void:
 		return
 	print("[%s] RAID_PLANET %s cities=%d defenders=%d energy=%.1f bombs=%d" % [GameState.format_time(GameState.sim_time), target.name, target.alive_cities(), target.defenders, energy, GameState.bombs])
 	_do_jump(GameState.Loc.ENEMY_PLANET, target.id, _raid)
+
+
+## Zeit (s) bis ein Schwadron in Helion Städte gefährdet: gelandet = 0, an einer Station ≈ 30 s, sonst Ankunftszeit.
+func _squadron_threat_eta(sq: SquadronData) -> float:
+	match sq.state:
+		SquadronData.State.LANDED:
+			return 0.0
+		SquadronData.State.AT_STATION:
+			return 30.0
+		SquadronData.State.TRANSIT:
+			var eta := GameState.squadron_eta(sq)
+			if GameState.is_squadron_stopped(sq):
+				eta += Config.single_destroyer_stop_time
+			if sq.target_kind == SquadronData.TargetKind.STATION:
+				eta += 30.0   # Stationsangriff: keine Stadt direkt in Gefahr
+			return eta
+	return INF
+
+
+func _home_threat_eta() -> float:
+	var best := INF
+	for sq in GameState.squadrons:
+		best = minf(best, _squadron_threat_eta(sq))
+	return best
+
+
+## "Verteidigung zuerst": Kampf abbrechen und über die Karte neu entscheiden, wenn in Helion eine Landung droht
+## (im Feindsystem: zurückspringen; in Helion: zum dringenderen Schwadron, wenn das aktuelle noch Zeit hat).
+func _safe_interrupt(sc: CombatBase, delta: float) -> bool:
+	_safe_check_t -= delta
+	if _safe_check_t > 0.0:
+		return false
+	_safe_check_t = 1.0
+	if not Main.instance.can_open_map():
+		return false
+	var eta := _home_threat_eta()
+	var go := false
+	if GameState.player_system == 1:
+		go = eta < safe_return_eta
+	elif sc is SpaceCombat and (sc as SpaceCombat).mode == SpaceCombat.Mode.SQUADRON and (sc as SpaceCombat).squadron != null:
+		var cur := (sc as SpaceCombat).squadron
+		go = eta < 25.0 and _squadron_threat_eta(cur) > eta + 60.0
+	if not go:
+		return false
+	print("[%s] SAFE_SWITCH eta=%.0f system=%d" % [GameState.format_time(GameState.sim_time), eta, GameState.player_system])
+	_release()
+	_release_steer()
+	Main.instance.open_map()
+	return true
 
 
 func _raid_planet() -> PlanetData:
@@ -1135,6 +1228,7 @@ func _print_summary() -> void:
 		GameState.total_alive_cities(), GameState.total_cities(), GameState.energy])
 	if raid or int(GameState.stats.get("enemy_jumps", 0)) > 0:
 		var st: Dictionary = GameState.stats
+		print("SAFE_SUMMARY safe=%d intercept=%d defend_returns=%d intercepts=%d cities_lost=%d" % [1 if raid_safe else 0, 1 if raid_intercept else 0, _defend_returns, _intercepts, int(GameState.stats.get("cities_lost", 0))])
 		print("ENEMY_SUMMARY raids=%d enemy_jumps=%d receptions=%d raid_cost=%.1f raid_jump_cost=%.1f fighters_killed=%d enemy_cities=%d/%d bombs=%d/%d intercepted=%d production=%.2f enemy_squadrons=%d victory=%d end=%s %s" % [
 			_raids, st.get("enemy_jumps", 0), st.get("receptions", 0), _raid.cost, _raid.jump, _raid.fk,
 			st.get("enemy_cities", 0), GameState.enemy_cities_total(), st.get("bombs_hit", 0), st.get("bombs_dropped", 0),

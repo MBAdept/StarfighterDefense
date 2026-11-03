@@ -15,7 +15,7 @@ Benötigt wird eine Grafikkarte mit Vulkan, DirectX 12 oder OpenGL 3.3. Godot f�
 ## Spielziel
 
 Verteidige das Helion-System. Feindliche Schwadrone kommen aus dem Feindsystem **Vorrhal** (Galaxie oben links auf der Karte). Sie fliegen langsam auf Planeten oder Raumstationen zu, landen und bombardieren Städte.
-**Gewonnen** hast du, sobald alle 12 Städte der feindlichen Heimatwelt **Xhal** zerbombt sind.
+**Gewonnen** hast du, sobald **alle Städte im Feindsystem** zerbombt sind. Das sind 36–44 Städte auf 5 Planeten und braucht mehrere Angriffe.
 **Verloren** hast du, wenn deine Energie auf 0 fällt oder alle eigenen Städte zerstört sind.
 Am Ende steht immer eine **Auswertung**: bei Sieg, Game Over und vorzeitigem Abbruch. Dazu gibt es eine lokale Highscore-Liste.
 
@@ -33,8 +33,10 @@ Am Ende steht immer eine **Auswertung**: bei Sieg, Game Over und vorzeitigem Abb
 - **Feindkarte**: Stern Vorrhal und 5 Planeten. Die Heimatwelt Xhal liegt innen und hat 12 Städte. Die 4 äußeren Planeten (Kethra, Uzhul, Drauth, Myrrax) haben je 6–8 Städte. Unten rechts liegt der **Rücksprungpunkt** nach Helion, als Symbol dient unser Stern. Sprünge innerhalb des Feindsystems kosten wie gewohnt 3–15 % je nach Entfernung.
 - **Schwadron-Nachschub**: Von den äußeren Planeten starten sichtbar neue Schwadrone (Ring „START!“). Sie fliegen zum Sprungpunkt und springen ins Helion-System, sofern dort weniger als 4 unterwegs sind, sonst warten sie. Diese Schwadrone haben Zerstörer und eventuell ein Flaggschiff. Du kannst sie anwählen und **abfangen**.
 - **Produktion**: Jede zerstörte Stadt auf einem äußeren Planeten verlangsamt den Nachschub spürbar (+15 % Abstand je Stadt). Ohne Städte auf den äußeren Planeten kommen **keine neuen Schwadrone** mehr. Die Heimatwelt baut keine Schwadrone.
-- **Feindplaneten angreifen**: Die Städte werden von Fightern verteidigt. Außenplaneten haben 9–12, die Heimatwelt 18. Sie kommen in Dreierwellen und **regenerieren sich nicht**.
-- **Bomben**: Du hast **15 Bomben**. Auf Feindplaneten wechselst du mit **Q / Tab** (Gamepad X) zwischen Bordlaser und Bomben. Im Bombenmodus neigt sich der Blick leicht nach unten. Eine **Aufschlagmarke** am Boden zeigt, wo eine jetzt abgeworfene Bombe einschlägt. Die Bombe fällt ballistisch und fliegt umso weiter, je schneller du fliegst (ca. 55–140 m voraus).
+- **Feindplaneten angreifen**: Die Städte werden von Fightern verteidigt. Außenplaneten haben 9–12, die Heimatwelt 18. Sie kommen in Dreierwellen dicht hintereinander und **regenerieren sich nicht**.
+  - Die Verteidiger nehmen dein Schiff so heftig unter Beschuss, dass zum Bomben keine Zeit bleibt: 2,5-fache Feuerrate mit Doppelschuss, auf der Heimatwelt sogar 3-fach.
+  - Also erst die Verteidiger mit dem Bordlaser abwehren, dann in Ruhe bombardieren.
+- **Bomben**: Du hast **10 Bomben**, das reicht für etwa einen äußeren Planeten pro Angriff. Auf Feindplaneten wechselst du mit **Q / Tab** (Gamepad X) zwischen Bordlaser und Bomben. Im Bombenmodus neigt sich der Blick leicht nach unten. Eine **Aufschlagmarke** am Boden zeigt, wo eine jetzt abgeworfene Bombe einschlägt. Die Bombe fällt ballistisch und fliegt umso weiter, je schneller du fliegst (ca. 55–140 m voraus).
   - Wird die Marke grün, liegt eine Stadt im Trefferkreis: FEUER.
   - **1 Treffer zerstört eine Stadt** und bringt **5000 Punkte**. Ein Fehlwurf ist verloren.
   - „BOMBE UNTERWEGS“ heißt, auf diese Stadt fällt schon eine Bombe.
@@ -84,11 +86,15 @@ Testszenarien über die Kommandozeile (`StarfighterDefense -- --test=…`):
 |---|---|
 | `enemy` | Sprung ins Feindsystem mit Empfangskomitee |
 | `enemy_planet` | Feindplanet, `--planet=0…4` (0 = Heimatwelt), `--nodefenders` ohne Verteidiger |
-| `victory` | Heimatwelt mit nur noch einer Stadt (Sieg testen) |
+| `victory` | Nur noch eine einzige Feindstadt im System, auf `--planet=N`, Standard Heimatwelt (Sieg testen) |
 | `enemy_map` | Feindkarte mit startenden Schwadronen |
 | `evaluation` | Auswertungsbildschirm, `--end=victory\|abort\|gameover` |
 
-Mit `-- --autoplay --raid` greift der automatische Testfahrer auch das Feindsystem an. Optionen: `--human` und `--raid_target=auto|home|outer`.
+Mit `-- --autoplay --raid` greift der automatische Testfahrer auch das Feindsystem an. Optionen:
+- `--human`: menschenähnlicher Testfahrer
+- `--raid_target=auto|home|outer`: Wahl der Angriffsziele
+- `--raid_safe`: „Verteidigung zuerst“. Er greift nur an, wenn in Helion länger keine Landung droht, und springt sofort zurück, sobald eine Landung näher rückt.
+- `--raid_intercept`: Er fängt startende Schwadrone schon im Feindsystem ab.
 
 ## Auswertung
 
@@ -110,10 +116,10 @@ fighter_damage=2.0
 bombard_time=14.0
 single_destroyer_stops=false
 orbit_fighter_count=12
-enemy_home_defenders=30
-enemy_home_burst_shots=2
+bombs_max=12
+enemy_defender_fire_rate_factor=2.0
 enemy_production_slowdown=0.25
-bomb_hit_radius=18.0
+victory_all_enemy_cities=false
 ```
 
 Eine Vorlage mit allen Werten schreibt das Spiel beim Start nach `balance_template.cfg` im Benutzerordner:
@@ -123,6 +129,13 @@ Eine Vorlage mit allen Werten schreibt das Spiel beim Start nach `balance_templa
 Dort liegen auch `highscores.json` und `settings.cfg`.
 
 Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automatische Waffenwahl, 9/12 Fighter im Orbit, die [VERMUTET]-Regel „Schwadron mit nur einem Zerstörer bleibt zeitweise stehen“, Schwierigkeit, Scanner-Ausrichtung, Randpfeile und Retro-Filter.
+
+## Änderungen in Version 0.10.1
+
+- **Sieg erst, wenn alle Städte im Feindsystem zerstört sind**, nicht mehr nur die der Heimatwelt (`victory_all_enemy_cities`).
+- **Verteidiger feuern heftig**: 2,5-fache Feuerrate mit Doppelschuss, Heimatwelt 3-fach. Die Wellen folgen nach 1 s statt nach 3,7 s. Zwischen den Wellen bleibt kaum Zeit zum Bomben.
+- **10 Bomben** statt 15: Eine Ladung reicht für einen äußeren Planeten (6–8 Städte), aber nicht mehr für die Heimatwelt Xhal (12 Städte) und schon gar nicht für das ganze System (36–44 Städte).
+- Alle drei Regeln stehen in `config.gd` und lassen sich per `balance.cfg` ändern (siehe `balance_beispiel.cfg`).
 
 ## Änderungen in Version 0.10.0 – Feindsystem
 
@@ -158,7 +171,8 @@ Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automati
 ## Stand / offene Punkte
 
 - **Militär-Rang und Siegbonus** folgen nach deinen Tests. Vorgesehen ist `bonus_victory` in `config.gd`, derzeit 0.
-- **Balance-Hinweis**: Ein direkter Angriff auf die Heimatwelt gleich nach dem Orbit-Start ist möglich. Testläufe haben so nach 2–4 Minuten gewonnen. Wer das schwerer haben möchte, kann z. B. `enemy_home_defenders`, `enemy_home_fire_rate_factor` oder `enemy_home_burst_shots` erhöhen.
+- **Sieg ohne Städteverlust ist möglich**: Mit der Strategie „Verteidigung zuerst“ (`--raid_safe`) gewannen alle 4 Testpartien ohne eine einzige verlorene eigene Stadt. Der perfekte Testfahrer brauchte 11–12 Minuten, der menschenähnliche 23–25 Minuten. Ohne diese Vorsicht verlor der menschenähnliche Testfahrer in einer Partie 36 Städte.
+- **Balance** (ab 0.10.1): Für den Sieg müssen alle Feindstädte fallen, mit 10 Bomben je Anflug und heftig feuernden Verteidigern. Ein Sturmangriff gleich zu Beginn reicht damit nicht mehr. Feinjustierung über `enemy_defender_fire_rate_factor`, `enemy_defender_burst_shots`, `enemy_defender_wave_delay` und `bombs_max`.
 
 ## Projektstruktur (Quellcode)
 

@@ -243,7 +243,7 @@ func request_jump(kind: int, id: int) -> void:
 	if scene is PlanetCombat:
 		(scene as PlanetCombat).resolve_pending_bombs()
 		if GameState.game_over:
-			return   # die letzte Bombe hat die Heimatwelt getroffen: Sieg statt Sprung
+			return   # die letzte Bombe hat die letzte Feindstadt getroffen: Sieg statt Sprung
 	var target_pos := _loc_map_pos(kind, id)
 	var long := GameState.is_cross_system(kind)
 	_jumping = true
@@ -512,9 +512,11 @@ func _run_test_scenario() -> void:
 			if _test.has("nodefenders") or what == "victory":
 				ep.defenders = 0
 			if what == "victory":
-				# nur noch eine Stadt der Heimatwelt übrig
-				for ci in ep.cities.size() - 1:
-					ep.cities[ci] = false
+				# nur noch eine einzige Feindstadt übrig (auf diesem Planeten)
+				for op in GameState.enemy_planets:
+					for ci in op.cities.size():
+						if op != ep or ci < op.cities.size() - 1:
+							op.cities[ci] = false
 			_enter_location(GameState.Loc.ENEMY_PLANET, idx)
 		"enemy_intercept":
 			# Schwadron im Feindsystem abfangen (Zerstörer/Flaggschiff möglich)

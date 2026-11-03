@@ -638,7 +638,7 @@ func _setup_enemy_planet() -> void:
 	if alive == 0:
 		hud.show_message(title, "Alle Städte zerstört", 2.5, UITheme.TEXT_DIM)
 	elif planet.defenders > 0:
-		wave_timer = 2.4
+		wave_timer = Config.enemy_defender_first_wave
 		hud.show_message(title, "%d Verteidiger steigen auf · %d Bomben an Bord (Q: Bomben)" % [planet.defenders, GameState.bombs], 3.4, UITheme.RED)
 		Audio.alarm(-6.0)
 	else:
@@ -664,7 +664,7 @@ func _update_defender_waves(delta: float) -> void:
 	if _fighters_alive() > 0 or planet.defenders <= 0 or planet.alive_cities() == 0:
 		return
 	if wave_timer < 0.0:
-		wave_timer = Config.wave_delay + 1.5
+		wave_timer = Config.enemy_defender_wave_delay   # [Vorgabe] kaum Pause: keine Zeit zum Bomben
 	wave_timer -= delta
 	if wave_timer > 0.0:
 		return
@@ -917,10 +917,17 @@ func _on_enemy_city_destroyed(p: PlanetData, idx: int) -> void:
 	hud.add_popup(c + Vector3(0, 30, 0), "+%d" % Config.enemy_city_points, UITheme.GREEN)
 	_update_enemy_texts()
 	var left := planet.alive_cities()
-	if GameState.game_over or (planet.is_home and left == 0):
-		return   # Sieg: die Siegsequenz übernimmt (Meldung, Musik)
+	# das Signal kommt vor der Siegprüfung: letzte Stadt → gleich folgt die Siegsequenz (Meldung, Musik)
+	if GameState.game_over or GameState.victory_cities_left() == 0:
+		return
 	if left == 0:
-		hud.show_message("%s AUSGESCHALTET" % planet.name.to_upper(), "Von hier starten keine Schwadrone mehr · LEERTASTE: Feindkarte", 4.0, UITheme.GREEN)
+		var rest := GameState.enemy_cities_alive()   # tatsächlich verbleibende Städte im System
+		var sub := "Noch %s im Feindsystem · LEERTASTE: Feindkarte" % UITheme.cities_text(rest)
+		if not planet.is_home:
+			sub = "Von hier starten keine Schwadrone mehr · noch %s im System" % UITheme.cities_text(rest)
+			if not Config.victory_all_enemy_cities:
+				sub += " · Heimatwelt: noch %s bis zum Sieg" % UITheme.cities_text(GameState.victory_cities_left())
+		hud.show_message("%s AUSGESCHALTET" % planet.name.to_upper(), sub, 4.0, UITheme.GREEN)
 		Audio.sfx("planet_saved")
 		Audio.play_music(music_track(), 3.0)
 	else:

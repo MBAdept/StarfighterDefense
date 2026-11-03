@@ -896,15 +896,22 @@ func trigger_game_over(reason: String) -> void:
 	_end_game("gameover", reason)
 
 
-## Sieg: alle Städte der feindlichen Heimatwelt zerstört.
+## Sieg: alle Städte im Feindsystem zerstört (Config.victory_all_enemy_cities, sonst nur die Heimatwelt).
 func trigger_victory() -> void:
 	if game_over:
 		return
 	victory = true
 	if Config.bonus_victory > 0:
 		add_score(Config.bonus_victory, "Sieg", "bonus")
-	log_event("SIEG! Die feindliche Heimatwelt %s ist gefallen." % enemy_home().name, Sev.GOOD)
+	log_event(victory_text(), Sev.GOOD)
 	_end_game("victory", "victory")
+
+
+func victory_text() -> String:
+	if Config.victory_all_enemy_cities:
+		return "SIEG! Alle Städte im %s-System sind zerstört." % ENEMY_STAR_NAME
+	var home := enemy_home()
+	return "SIEG! Die feindliche Heimatwelt %s ist gefallen." % (home.name if home else "")
 
 
 ## Vorzeitiger Abbruch (Pausemenü) – führt ebenfalls zur Auswertung.
@@ -1029,11 +1036,23 @@ func destroy_enemy_city(p: PlanetData, idx: int) -> void:
 	add_score(Config.enemy_city_points, "Feindstadt", "enemy_cities")
 	log_event("%s: Feindstadt %s zerstört! (%d übrig)" % [p.name, p.city_names[idx], p.alive_cities()], Sev.GOOD)
 	enemy_city_destroyed.emit(p, idx)
-	if p.is_home:
-		if p.alive_cities() == 0:
-			trigger_victory()
+	if victory_cities_left() == 0:
+		trigger_victory()
 	elif p.alive_cities() == 0:
-		log_event("%s ist ausgeschaltet – von dort starten keine Schwadrone mehr." % p.name, Sev.GOOD)
+		if p.is_home:
+			var n := enemy_cities_alive()
+			log_event("Heimatwelt %s ausgeschaltet! Noch %d %s im System." % [p.name, n, "Feindstadt" if n == 1 else "Feindstädte"], Sev.GOOD)
+		else:
+			log_event("%s ist ausgeschaltet – von dort starten keine Schwadrone mehr." % p.name, Sev.GOOD)
+
+
+## Bis zum Sieg verbleibende Feindstädte: [Vorgabe] alle im Feindsystem (bzw. nur die Heimatwelt, wenn
+## Config.victory_all_enemy_cities = false).
+func victory_cities_left() -> int:
+	if Config.victory_all_enemy_cities:
+		return enemy_cities_alive()
+	var home := enemy_home()
+	return home.alive_cities() if home else 0
 
 
 ## Ein Verteidiger eines Feindplaneten wurde abgeschossen (keine Regeneration).

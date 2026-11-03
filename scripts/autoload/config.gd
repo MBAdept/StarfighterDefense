@@ -221,18 +221,23 @@ var enemy_city_count_min := 6           ## [FREI, Vorgabe] die 4 äußeren Feind
 var enemy_city_count_max := 8           ## [FREI, Vorgabe]
 var enemy_home_city_count := 12         ## [FREI, Vorgabe] … die feindliche Heimatwelt 12
 var enemy_city_points := 5000           ## [FREI, Vorgabe] Punkte je zerbombter Feindstadt
+var victory_all_enemy_cities := true    ## [FREI, Vorgabe] Sieg erst, wenn ALLE Städte im Feindsystem zerstört sind (false = nur die Heimatwelt)
 ## Empfangskomitee bei JEDEM Sprung ins Feindsystem: nur Fighter (keine Zerstörer/Flaggschiffe)
 var reception_fighter_count := 12       ## [FREI, Vorgabe] 12 Fighter = 4 Wellen à 3
 var reception_fire_rate_factor := 2.0   ## [FREI, Vorschlag] deutlich aggressiver: doppelte Feuerrate …
 var reception_burst_shots := 2          ## [FREI, Vorschlag] … und Doppelschuss je Feuerstoß
-## Verteidiger der Feindstädte: fester Bestand je Planet, Wellen à fighters_per_wave, KEINE Regeneration
+## Verteidiger der Feindstädte: fester Bestand je Planet, Wellen à fighters_per_wave, KEINE Regeneration.
+## [ORIGINAL qualitativ] Sie nehmen das eigene Schiff so heftig unter Beschuss, dass zum Bomben keine Zeit bleibt:
+## erst die Verteidiger abwehren, dann bombardieren.
 var enemy_defenders_min := 9            ## [FREI, Vorschlag] äußere Planeten 9–12 Fighter
 var enemy_defenders_max := 12           ## [FREI, Vorschlag]
 var enemy_home_defenders := 18          ## [FREI, Vorschlag] Heimatwelt 18 Fighter
-var enemy_defender_fire_rate_factor := 1.5   ## [FREI] Verteidiger schießen etwas häufiger als normale Fighter
-var enemy_defender_burst_shots := 1     ## [FREI] Schüsse je Feuerstoß der Verteidiger
-var enemy_home_fire_rate_factor := 1.5  ## [FREI] dasselbe für die Verteidiger der Heimatwelt (z. B. 2.0 = wie Empfangskomitee)
-var enemy_home_burst_shots := 1         ## [FREI] (2 = Doppelschuss)
+var enemy_defender_fire_rate_factor := 2.5   ## [FREI, Vorgabe "heftiger Beschuss"] Feuerrate × gegenüber normalen Fightern (Empfangskomitee: 2.0)
+var enemy_defender_burst_shots := 2     ## [FREI, Vorgabe] Schüsse je Feuerstoß der Verteidiger (2 = Doppelschuss)
+var enemy_home_fire_rate_factor := 3.0  ## [FREI] dasselbe für die Verteidiger der Heimatwelt
+var enemy_home_burst_shots := 2         ## [FREI]
+var enemy_defender_wave_delay := 1.0    ## [FREI, Vorgabe] Pause bis zur nächsten Verteidiger-Welle (s) – zwischen den Wellen bleibt kaum Zeit zum Bomben
+var enemy_defender_first_wave := 1.5    ## [FREI] erste Welle nach der Ankunft auf dem Planeten (s)
 ## Schwadron-Produktion: Schwadrone starten sichtbar von äußeren Planeten mit intakten Städten und fliegen
 ## zum Sprungpunkt ins Helion-System. Jede zerstörte Stadt auf einem äußeren Planeten verlangsamt die Produktion,
 ## ohne Städte auf den äußeren Planeten kommt kein neues Schwadron mehr (Heimatwelt produziert nicht).
@@ -245,7 +250,7 @@ var bonus_victory := 0                  ## [später] Siegbonus/Militär-Rang –
 # ---------------------------------------------------------------------------------------------
 #  Bomben  (nur auf Feindplaneten; Waffenwechsel Bordlaser ↔ Bomben manuell mit Q/Tab/X)
 # ---------------------------------------------------------------------------------------------
-var bombs_max := 15                     ## [FREI, Vorgabe] 15 Bomben; Auffüllen nur beim Andocken an eigenen Stationen
+var bombs_max := 10                     ## [FREI, Vorgabe] 10 Bomben – so lässt sich kein System „in einem Zug durchbomben“; Auffüllen nur beim Andocken an eigenen Stationen
 var bomb_cooldown := 0.9                ## [FREI] Mindestabstand zweier Abwürfe (s)
 var bomb_gravity := 22.0                ## [FREI] Fallbeschleunigung (m/s², arcadehaft)
 var bomb_drop_speed := 4.0              ## [FREI] Anfangsgeschwindigkeit nach unten (m/s)

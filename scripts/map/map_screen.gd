@@ -888,7 +888,8 @@ func _draw_panel(vp: Vector2) -> void:
 			var ep: PlanetData = GameState.enemy_planets[sel_id]
 			_text(f, Vector2(x, y), ep.name.to_upper(), _f_title, 34, Color(1.0, 0.62, 0.72))
 			y += 32
-			_text(f, Vector2(x, y), ("FEINDLICHE HEIMATWELT · SIEGZIEL" if ep.is_home else "FEINDPLANET · " + _type_name(ep.type)), _f_bold, 22, Color(1.0, 0.45, 0.62, 0.95))
+			var hl := "FEINDLICHE HEIMATWELT" + ("" if Config.victory_all_enemy_cities else " · SIEGZIEL")
+			_text(f, Vector2(x, y), (hl if ep.is_home else "FEINDPLANET · " + _type_name(ep.type)), _f_bold, 22, Color(1.0, 0.45, 0.62, 0.95))
 			y += 46
 			_text(f, Vector2(x, y), "Städte", _f_body, 22, UITheme.TEXT_DIM)
 			_text(f, Vector2(x, y), "%d / %d" % [ep.alive_cities(), ep.cities.size()], _f_mono, 26, UITheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT, w)
@@ -908,8 +909,9 @@ func _draw_panel(vp: Vector2) -> void:
 			_text(f, Vector2(x, y), "%d / %d" % [GameState.bombs, Config.bombs_max], _f_mono, 24, UITheme.AMBER if GameState.bombs > 0 else UITheme.RED, HORIZONTAL_ALIGNMENT_RIGHT, w)
 			y += 40
 			if ep.is_home:
-				_text(f, Vector2(x, y), "Alle Städte zerstört = SIEG", _f_bold, 22, UITheme.GREEN)
-				y += 28
+				if not Config.victory_all_enemy_cities:
+					_text(f, Vector2(x, y), "Alle Städte zerstört = SIEG", _f_bold, 22, UITheme.GREEN)
+					y += 28
 				_text(f, Vector2(x, y), "Die Heimatwelt baut keine Schwadrone.", _f_body, 20, UITheme.TEXT_DIM)
 				y += 26
 			elif ep.alive_cities() > 0:
@@ -921,6 +923,8 @@ func _draw_panel(vp: Vector2) -> void:
 				_text(f, Vector2(x, y), "Ausgeschaltet – baut keine Schwadrone mehr.", _f_bold, 21, UITheme.GREEN)
 				y += 28
 			_text(f, Vector2(x, y), "Pro Stadt 1 Bombentreffer · %d Punkte" % Config.enemy_city_points, _f_body, 19, UITheme.TEXT_DIM)
+			y += 26
+			_text(f, Vector2(x, y), _victory_line(), _f_bold, 20, UITheme.GREEN)
 			y += 26
 			if _is_current(GameState.Loc.ENEMY_PLANET, ep.id):
 				cost_line = "AKTUELLE POSITION"
@@ -949,6 +953,14 @@ func _draw_panel(vp: Vector2) -> void:
 	_text(f, Vector2(x, o.y + h - 12), "Pfeile: Ziel · E: nächstes · Q/Tab: System · LEERTASTE: zurück", _f_body, 16, Color(UITheme.TEXT_DIM, 0.8))
 
 
+## Siegbedingung mit Restzahl.
+func _victory_line() -> String:
+	var left := GameState.victory_cities_left()
+	if Config.victory_all_enemy_cities:
+		return "Sieg: alle Feindstädte zerstören (noch %d)" % left
+	return "Sieg: Heimatwelt zerstören (noch %d Städte)" % left
+
+
 ## Lage im Feindsystem (Städte, Produktion, nächster Start) – für das Infofenster.
 func _draw_enemy_summary(f: Control, x: float, y: float, w: float) -> float:
 	_text(f, Vector2(x, y), "Feindstädte", _f_body, 22, UITheme.TEXT_DIM)
@@ -966,7 +978,9 @@ func _draw_enemy_summary(f: Control, x: float, y: float, w: float) -> float:
 	var eta := GameState.next_launch_eta()
 	var nl := "nächster Start in ca. %s" % GameState.format_time(eta) if eta >= 0.0 else ("keine Starts mehr" if rate <= 0.0 else "Höchstzahl unterwegs")
 	_text(f, Vector2(x, y), "%d unterwegs · %s" % [GameState.enemy_squadrons.size(), nl], _f_body, 20, UITheme.TEXT)
-	y += 36
+	y += 30
+	_text(f, Vector2(x, y), _victory_line(), _f_bold, 20, UITheme.GREEN)
+	y += 34
 	return y
 
 
