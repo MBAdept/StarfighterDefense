@@ -38,6 +38,11 @@ func on_ion_hit(_res: Dictionary) -> void:
 	pass
 
 
+## Mittelpunkt der Trefferzone (Zielerfassung, Zielklammer, Testfahrer).
+func aim_point() -> Vector3:
+	return global_position
+
+
 ## Abstand und Winkel zur Bildmitte (für Zielerfassung).
 func aim_error_deg() -> float:
 	var cam := combat.camera
@@ -45,6 +50,8 @@ func aim_error_deg() -> float:
 	var fwd := -cam.global_transform.basis.z
 	var ang := rad_to_deg(fwd.angle_to(to))
 	var ang_r := rad_to_deg(atan2(hit_radius, maxf(to.length(), 0.1)))
+	if to.length() > Config.laser_range + hit_radius:
+		return maxf(ang - ang_r, 0.02)   # außer Reichweite: als Ziel wählbar, aber kein Lock
 	return maxf(ang - ang_r, 0.0)
 
 

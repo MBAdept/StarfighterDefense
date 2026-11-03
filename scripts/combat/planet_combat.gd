@@ -460,6 +460,15 @@ func _on_squadron_landed(sq: SquadronData, p: PlanetData) -> void:
 	_begin_attack(true)
 
 
+## Lebende Verstärkungs-Fighter (Anzeige im Lagefeld).
+func reinforcements_alive() -> int:
+	var n := 0
+	for e in enemies:
+		if is_instance_valid(e) and e.alive and e.kind == Enemy.Kind.FIGHTER and e.has_meta("reinforcement"):
+			n += 1
+	return n
+
+
 func _fighters_alive() -> int:
 	var n := 0
 	for e in enemies:
@@ -500,6 +509,8 @@ func _on_enemy_removed(e: Enemy) -> void:
 		if enemy_mode:
 			if e.has_meta("reinforcement"):
 				GameState.on_fighter_killed(null)   # Verstärkung: zählt nicht zum Verteidiger-Bestand
+				if _fighters_alive() == 0 and not GameState.game_over:
+					Audio.play_music(music_track(), 3.0)   # Ruhe bis zur nächsten Verstärkung
 				return
 			# [Vorgabe] der Verteidiger-Bestand regeneriert sich nicht
 			GameState.on_defender_killed(planet)
@@ -703,6 +714,7 @@ func _update_reinforcements(delta: float) -> void:
 		return
 	_spawn_defenders(n, true)
 	Audio.sfx("wave_incoming", -2.0)
+	Audio.play_music(music_track(), 2.0)
 	hud.show_message("VERSTÄRKUNG IM ANFLUG", "%d Fighter" % n, 1.6, UITheme.FIGHTER_COLOR, true)
 
 

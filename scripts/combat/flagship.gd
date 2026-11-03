@@ -208,6 +208,12 @@ func segment_hit(p0: Vector3, p1: Vector3, tolerance: float) -> Dictionary:
 	var b := inv * p1
 	var box := _local_aabb.grow(tolerance)
 	if box.intersects_segment(a, b):
+		# Das Quadrat sitzt knapp hinter der Vorderkante der Box: Führt die Bahn noch hindurch, zählt der Schuss
+		# dafür. Sonst hinge der Treffer vom Bildtakt ab (kurze Segmente bei hoher Bildrate prallen am Rumpf ab).
+		var wr := Config.flagship_weakpoint_radius + tolerance * 0.5
+		var ahead := p1 + (p1 - p0).normalized() * (2.0 * wr + 8.0)
+		if ShotSystem._seg_sphere(p0, ahead, wp, wr):
+			return {"point": ShotSystem.seg_closest(p0, ahead, wp), "part": "weak"}
 		var mid := ShotSystem.seg_closest(p0, p1, global_position)
 		return {"point": mid, "part": "hull"}
 	return {}

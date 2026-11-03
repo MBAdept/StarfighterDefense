@@ -179,7 +179,8 @@ func _update_targeting() -> void:
 			# beim Flaggschiff zählt das Quadrat
 			var wp: Vector3 = e.weak_point_pos()
 			var ang := rad_to_deg((-camera.global_transform.basis.z).angle_to(wp - camera.global_position))
-			err = maxf(ang - rad_to_deg(atan2(Config.flagship_weakpoint_radius * 1.6, wp.distance_to(camera.global_position))), 0.0)
+			# Erfassung = Trefferradius des Quadrats (Flagship.segment_hit), damit ein Lock auch treffen kann
+			err = maxf(ang - rad_to_deg(atan2(Config.flagship_weakpoint_radius + Config.ion_hit_tolerance * 0.5, wp.distance_to(camera.global_position))), 0.0)
 		if err < best_err:
 			best_err = err
 			best = e

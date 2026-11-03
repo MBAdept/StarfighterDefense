@@ -37,6 +37,8 @@ var _dodge := Vector2.ZERO        ## aktueller Ausweichversatz (Grad; x = Gieren
 var _dodge_goal := Vector2.ZERO
 var _dodge_t := 0.0
 var _dodge_delay := 0.0
+## [FREI] Planet: Höhenband (m) über/unter der Trefferzone, in dem Schüsse ohne Rücksicht auf die Höhe zählen
+const PLANET_HIT_BAND := 6.0
 
 
 func _ready() -> void:
@@ -145,15 +147,31 @@ func _process_space(delta: float) -> void:
 	_update_fire(delta)
 
 
-## [FREI] Ionen-Kugel im Anflug: mit Chance je Farbe (destroyer_dodge_chance) kurz zur Seite ausweichen.
-func on_ion_incoming() -> void:
+## [FREI] Ionen-Kugel im Anflug (Strahl origin + dir·t): Fliegt sie auf ihn zu oder knapp vorbei
+## (destroyer_dodge_threat), weicht er mit Chance je Farbe (destroyer_dodge_chance) blitzschnell aus –
+## immer vom Schuss weg, nie in ihn hinein. Klare Fehlschüsse ignoriert er.
+func on_ion_incoming(origin: Vector3, dir: Vector3) -> void:
 	if planet_mode or not alive or _dodge_t > 0.0 or _dodge_delay > 0.0:
+		return
+	# Bahn gegen die Lage beim Eintreffen prüfen (vorgehaltene Schüsse zählen als Bedrohung)
+	var hc := aim_point()
+	var lead := velocity * ((hc - origin).length() / Config.ion_speed)
+	if _ray_norm_dist(origin - lead, dir, Config.ion_hit_tolerance) > Config.destroyer_dodge_threat:
 		return
 	if randf() >= float(Config.by_color(Config.destroyer_dodge_chance, data.color)):
 		return
-	var a := randf() * TAU
+	# Ausweichrichtung in der Bildebene des Spielers: vom Schussstrahl weg (x = rechts, y = oben)
+	var future := hc + lead
+	var closest := origin + dir * maxf((future - origin).dot(dir), 0.0)
+	var away := future - closest
+	var cb := combat.camera.global_transform.basis
+	var v := Vector2(away.dot(cb.x), away.dot(cb.y))
+	if v.length() < 0.5:
+		v = Vector2.from_angle(randf() * TAU)   # Kurs genau auf die Mitte: zufällige Seite
+	v = v.normalized().rotated(randf_range(-0.5, 0.5))
 	var amt := Config.destroyer_dodge_angle * randf_range(0.75, 1.0)
-	_dodge_goal = Vector2(cos(a), sin(a) * 0.6) * amt
+	# Gieren: + = nach links (dir_from_angles), Nicken: + = nach oben
+	_dodge_goal = (_dodge + Vector2(-v.x, v.y * 0.6) * amt).limit_length(Config.destroyer_dodge_angle * 1.6)
 	_dodge_delay = randf_range(Config.destroyer_dodge_reaction_min, Config.destroyer_dodge_reaction_max)
 	_dodge_t = 2.0
 
@@ -169,17 +187,73 @@ func _update_dodge(delta: float) -> void:
 		_dodge = _dodge.lerp(Vector2.ZERO, 1.0 - exp(-0.7 * delta))  # langsam zurück auf die Bahn
 
 
-## Treffertest gegen das Rumpf-Ellipsoid (lokaler Raum).
-func segment_hit(p0: Vector3, p1: Vector3, tolerance: float) -> Dictionary:
+## Mittelpunkt der Trefferzone (= Mitte der Schildblase) in Weltkoordinaten.
+func aim_point() -> Vector3:
+	return global_transform * _hit_center
+
+
+## Radien der Trefferzone samt Toleranz. Auf Planeten zählt nur die waagerechte Lage (siehe segment_hit),
+## dafür ist die Trefferbreite dort mit destroyer_planet_hit_scale einstellbar.
+func _radii(tolerance: float) -> Vector3:
 	var r := _hit_radii + Vector3.ONE * tolerance
 	if planet_mode:
-		r.y = maxf(r.y, 8.0)   # auf Planeten kann man nicht nach oben zielen: Schwebehöhe/Schaukeln ausgleichen
-	var inv := global_transform.affine_inverse()
-	var a := (inv * p0 - _hit_center) / r
-	var b := (inv * p1 - _hit_center) / r
-	if ShotSystem._seg_sphere(a, b, Vector3.ZERO, 1.0):
-		return {"point": ShotSystem.seg_closest(p0, p1, global_position), "part": "hull"}
+		r.x *= Config.destroyer_planet_hit_scale
+		r.z *= Config.destroyer_planet_hit_scale
+	return r
+
+
+## Lage eines Weltpunkts relativ zur Mitte der Trefferzone (lokaler Raum des Zerstörers).
+func _local(p: Vector3) -> Vector3:
+	return global_transform.affine_inverse() * p - _hit_center
+
+
+## Treffertest gegen die Trefferzone (Weltraum: Ellipsoid um den Rumpf; Planet: senkrechter Zylinder).
+func segment_hit(p0: Vector3, p1: Vector3, tolerance: float) -> Dictionary:
+	var r := _radii(tolerance)
+	var a := _local(p0)
+	var b := _local(p1)
+	if planet_mode:
+		var band := r.y + PLANET_HIT_BAND
+		if (a.y > band and b.y > band) or (a.y < -band and b.y < -band):
+			return {}
+		a.y = 0.0
+		b.y = 0.0
+	if ShotSystem._seg_sphere(a / r, b / r, Vector3.ZERO, 1.0):
+		return {"point": ShotSystem.seg_closest(p0, p1, aim_point()), "part": "hull"}
 	return {}
+
+
+## Kleinster Abstand eines Strahls (origin + dir·t, 0 ≤ t ≤ max_t Meter) zur Mitte der Trefferzone – gemessen in
+## Trefferzonen-Radien: ≤ 1 = ein Schuss entlang des Strahls träfe (ohne Flugzeit/Bewegung).
+func _ray_norm_dist(origin: Vector3, dir: Vector3, tolerance: float, max_t := INF) -> float:
+	var r := _radii(tolerance)
+	var lo := _local(origin)
+	var ld := global_transform.affine_inverse().basis * dir
+	if planet_mode:
+		if absf(lo.y) > r.y + PLANET_HIT_BAND:
+			return INF
+		lo.y = 0.0
+		ld.y = 0.0
+	lo /= r
+	ld /= r
+	var dd := ld.length_squared()
+	if dd < 0.000001:
+		return lo.length()
+	return (lo + ld * clampf(-lo.dot(ld) / dd, 0.0, max_t)).length()
+
+
+## Zielerfassung passend zur Trefferzone: 0 = ein Ionen-Schuss in Blickrichtung träfe jetzt.
+func aim_error_deg() -> float:
+	var cam := combat.camera
+	var o := cam.global_position
+	var fwd := -cam.global_transform.basis.z
+	var n := _ray_norm_dist(o, fwd, Config.ion_hit_tolerance, Config.ion_range)   # die Kugel erlischt nach ion_range
+	if n <= 1.0:
+		return 0.0
+	var ang := rad_to_deg(fwd.angle_to(aim_point() - o))
+	if is_inf(n):
+		return maxf(ang, 0.02)
+	return maxf(ang * (1.0 - 1.0 / n), 0.02)
 
 
 func _update_fire(delta: float) -> void:

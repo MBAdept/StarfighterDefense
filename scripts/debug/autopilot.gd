@@ -246,7 +246,7 @@ func _fly(sc: CombatBase, delta: float) -> void:
 		_no_target(sc, delta)
 		return
 	_decide_t = 0.0
-	var aim: Vector3 = target.global_position
+	var aim: Vector3 = target.aim_point()
 	if target is Flagship:
 		aim = (target as Flagship).weak_point_pos()
 	# Vorhalt
@@ -347,7 +347,7 @@ func _fly_human(sc: CombatBase, delta: float) -> void:
 		return
 	# Zielpunkt mit unvollständigem Vorhalt, dazu der wandernde Zielfehler
 	var cam := sc.camera.global_position
-	var aim: Vector3 = target.global_position
+	var aim: Vector3 = target.aim_point()
 	if target is Flagship:
 		aim = (target as Flagship).weak_point_pos()
 	var spd := Config.ion_speed if sc.weapon == CombatBase.Weapon.ION else Config.laser_speed

@@ -31,6 +31,8 @@ var _test := {}
 
 func _ready() -> void:
 	instance = self
+	# Bildrate begrenzen (siehe Config.max_fps); die beschleunigten Testläufe (--autoplay) laufen unbegrenzt
+	Engine.max_fps = 0 if OS.get_cmdline_user_args().has("--autoplay") else maxi(Config.max_fps, 0)
 	get_tree().root.theme = UITheme.get_theme()
 	state_root = Node.new()
 	state_root.name = "StateRoot"

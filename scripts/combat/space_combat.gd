@@ -784,6 +784,7 @@ func is_docking() -> bool:
 # =============================================================================================
 func debug_finish_orbit() -> void:
 	if mode == Mode.RECEPTION and phase == Phase.FIGHTERS:
+		GameState.reception_left = 0   # übersprungen = erledigt ("bleibt ab jetzt frei")
 		for e in enemies.duplicate():
 			if is_instance_valid(e):
 				e.queue_free()

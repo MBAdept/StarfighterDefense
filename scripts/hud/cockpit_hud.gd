@@ -262,11 +262,12 @@ func _draw_target_marker(_vp: Vector2) -> void:
 	var e := combat.aim_target
 	if e == null or not is_instance_valid(e) or not e.alive:
 		return
-	var p := _project(e.global_position)
+	var ap := e.aim_point()   # Mitte der Trefferzone (beim Zerstörer die Schildblase)
+	var p := _project(ap)
 	if not p.front:
 		return
 	var dist := e.distance_to_player()
-	var px := combat.camera.unproject_position(e.global_position + combat.camera.global_transform.basis.x * e.hit_radius)
+	var px := combat.camera.unproject_position(ap + combat.camera.global_transform.basis.x * e.hit_radius)
 	var rad := clampf(px.distance_to(p.pos), 14.0, 220.0)
 	var col := e.hud_color
 	var lk := combat.locked
@@ -552,7 +553,11 @@ func _draw_status(o_right: Vector2, _vp: Vector2, _planet: bool) -> void:
 	elif combat is PlanetCombat and (combat as PlanetCombat).enemy_mode:
 		var ep: PlanetCombat = combat
 		lines.append(["FEINDSTÄDTE", "%d / %d" % [ep.planet.alive_cities(), ep.planet.cities.size()], Color(1.0, 0.4, 0.62)])
-		lines.append(["VERTEIDIGER", "%d" % ep.planet.defenders, UITheme.FIGHTER_COLOR if ep.planet.defenders > 0 else UITheme.GREEN])
+		var rf := ep.reinforcements_alive()
+		if rf > 0:
+			lines.append(["VERSTÄRKUNG", "%d" % rf, UITheme.FIGHTER_COLOR])   # nur bei 0 Verteidigern: ersetzt die Zeile
+		else:
+			lines.append(["VERTEIDIGER", "%d" % ep.planet.defenders, UITheme.FIGHTER_COLOR if ep.planet.defenders > 0 else UITheme.GREEN])
 		lines.append(["BOMBEN", "%d / %d" % [GameState.bombs, Config.bombs_max], UITheme.AMBER if GameState.bombs > 0 else UITheme.RED])
 	elif combat is PlanetCombat:
 		var pc: PlanetCombat = combat

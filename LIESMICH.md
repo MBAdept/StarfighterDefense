@@ -151,8 +151,17 @@ Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automati
   - Zerstörer-Treffer kosten 5,5 / 6,5 / 7,5 % statt 9 / 11 / 13 %. Zerstörer feuern etwas seltener (alle 11 / 10 / 9 s).
   - Das Flaggschiff kostet 20 % statt 35 % und pausiert länger nach dem Schuss.
   - Gemessen: Ein Schwadron kostet trotz längerer Kämpfe im Schnitt etwa 19 statt 29 Prozentpunkte Energie.
-  - Die Fighter im Feindsystem (Empfangskomitee, Verteidiger, Verstärkung) behalten ihren Schaden von 1,8 % je Treffer (`enemy_fighter_damage`). Die Senkung betrifft nur die Kämpfe gegen Schwadrone, damit das Bomben unter Beschuss so gefährlich bleibt wie gewünscht.
+  - Die Senkung gilt den Kämpfen gegen Schwadrone. Die Fighter im Feindsystem (Empfangskomitee, Verteidiger, Verstärkung) kosten 1,6 % je Treffer (`enemy_fighter_damage`). Weil sie jetzt schwerer zu treffen sind und länger leben, ist das Bomben unter Beschuss damit so gefährlich wie in 0.10.1.
 - **Sprünge günstiger**: 2,5–12 % statt 3–15 % je nach Entfernung. Sprung ins Feindsystem und zurück bleibt bei 20 %.
+- **Zielerfassung ehrlich**: Grünes Fadenkreuz, pulsierende Zielklammer und Lock-Ton gibt es nur noch, wenn ein Schuss in Blickrichtung jetzt treffen kann.
+  - Beim Zerstörer heißt das: in der Schildblase und in Reichweite der Ionen-Kugel (760 m). Die Zielklammer sitzt auf der Schildblase.
+  - Bei Fightern gilt die Laser-Reichweite (420 m).
+  - Beim Flaggschiff entspricht der Lock dem Trefferradius des rosa Quadrats. Schüsse, die durch das Quadrat führen, prallen nicht mehr an der Rumpfkante davor ab. Vorher hing das von der Bildrate ab: Bei 240 Hz prallte ein Großteil der Schüsse ab.
+- **Ausweichen nur bei echter Gefahr**: Zerstörer weichen nur Kugeln aus, die sie treffen würden oder knapp verfehlen (vorgehaltene Schüsse eingeschlossen), und immer vom Schuss weg. Sie springen also nie mehr in einen Fehlschuss hinein (`destroyer_dodge_threat`). Gemessen bleibt die Trefferquote der Ionen-Kanone praktisch gleich (41 % statt 42 %).
+- **Zerstörer auf Planeten fair**: Weil man dort nicht nach oben oder unten zielen kann, zählt nur noch die waagerechte Lage. Vorher hing die Trefferbreite vom Schaukeln des Zerstörers ab. Mit der Breite 0,7 (`destroyer_planet_hit_scale`) bleiben Planetenkämpfe im Schnitt gleich schwer: gemessen 62 % Ionen-Treffer statt 63 %, 26 s statt 27 s je Kampf.
+- **Verstärkung sichtbar**: Bei Verstärkung auf Feindplaneten setzt die Kampfmusik ein, und das Lagefeld zeigt „VERSTÄRKUNG n“.
+- **Bildrate höchstens 240 fps** (`max_fps`): Das schont die Grafikkarte, wenn VSync aus ist. Außerdem hält es einen seltenen Absturz im Audio-Mischthread der Godot-Engine fern, der nur bei extrem hohen Bildraten auftritt. In den beschleunigten Testläufen traf er etwa 1 von 100 Partien.
+- Testtaste F4 im Empfangskomitee: Das Komitee gilt danach wirklich als erledigt.
 - **Verstärkung auf Feindplaneten**: Sind die Verteidiger vernichtet, treffen gelegentlich 1–3 Fighter nach (etwa alle 14–26 s), solange der Planet noch Städte hat. Ein Planet lässt sich nicht mehr in einem Zug „durchbomben“ (`enemy_reinforce_*`).
 - Alle Werte stehen in `config.gd`, jeweils mit dem alten Wert als Kommentar („bis 0.10.1: …“). Per `balance.cfg` lassen sie sich zurückdrehen, siehe `balance_beispiel.cfg`.
 
@@ -197,7 +206,9 @@ Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automati
 ## Stand / offene Punkte
 
 - **Militär-Rang und Siegbonus** folgen nach deinen Tests. Vorgesehen ist `bonus_victory` in `config.gd`, derzeit 0.
-- **Sieg ohne Städteverlust ist möglich**: Mit der Strategie „Verteidigung zuerst“ (`--raid_safe`) gewannen alle 4 Testpartien ohne eine einzige verlorene eigene Stadt. Der perfekte Testfahrer brauchte 11–12 Minuten, der menschenähnliche 23–25 Minuten. Ohne diese Vorsicht verlor der menschenähnliche Testfahrer in einer Partie 36 Städte.
+- **Sieg ohne Städteverlust ist möglich** (Endstand 0.10.2): Mit der Strategie „Verteidigung zuerst“ (`--raid_safe`) gewann der menschenähnliche Testfahrer 9 von 10 Partien, 7 davon ohne eine einzige verlorene eigene Stadt (sonst 1 bzw. 3). Er brauchte 15–35 Minuten, im Schnitt 24. Einmal ging ihm früh die Energie aus: Ein Flaggschiff traf ihn dreimal, und er floh zu spät. Der perfekte Testfahrer brauchte 8–11 Minuten.
+  - Mit Sturmangriff (`--raid`) gewann der menschenähnliche Testfahrer 5 von 6 Partien in 12–17 Minuten, verlor dabei aber 5–16 eigene Städte. Einmal ging ihm nach 9,5 Minuten die Energie aus.
+  - Die Gesamtspielzeit liegt damit etwa auf dem Niveau von 0.10.1 oder leicht darüber: Die Kämpfe dauern länger, dafür entfallen die wiederholten Empfangskomitees.
 - **Balance** (ab 0.10.1): Für den Sieg müssen alle Feindstädte fallen, mit 10 Bomben je Anflug und heftig feuernden Verteidigern. Ein Sturmangriff gleich zu Beginn reicht damit nicht mehr. Feinjustierung über `enemy_defender_fire_rate_factor`, `enemy_defender_burst_shots`, `enemy_defender_wave_delay` und `bombs_max`.
 
 ## Projektstruktur (Quellcode)

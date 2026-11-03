@@ -25,6 +25,9 @@ extends Node
 # ---------------------------------------------------------------------------------------------
 var debug_keys_enabled := true          ## [FREI] F1–F12 Testfunktionen (siehe README)
 var start_with_orbit := true            ## [ORIGINAL] Spielstart im Orbit des Heimatplaneten
+## [FREI] Bildrate begrenzen (0 = unbegrenzt; mit VSync gilt zusätzlich die Bildwiederholrate). Schont die Grafikkarte
+## und hält einen seltenen Absturz im Audio-Mischthread der Engine fern, der nur bei extrem hohen Bildraten auftritt.
+var max_fps := 240
 var difficulty_scale := 1.0             ## [FREI] Schwierigkeit (Optionen: 0.75 / 1.0 / 1.3): Gegnerschaden ×s, Schwadron-Tempo ×√s, Abstand neuer Schwadrone ÷s^0.7
 
 # ---------------------------------------------------------------------------------------------
@@ -144,6 +147,10 @@ var destroyer_dodge_chance := [0.62, 0.56, 0.32]
 var destroyer_dodge_angle := 12.0                   ## [FREI] Ausweichweg (Grad)
 var destroyer_dodge_reaction_min := 0.04            ## [FREI] Reaktionszeit (s)
 var destroyer_dodge_reaction_max := 0.12            ## [FREI]
+var destroyer_dodge_threat := 1.6                   ## [FREI] weicht nur aus, wenn die Kugel so nah vorbeifliegt (in Trefferzonen-Radien, ≤ 1 = Treffer)
+## [FREI] Planeten: Trefferbreite der Zerstörer (× Rumpf-Ellipse). Die Höhe zählt dort nicht, weil man nicht
+## nach oben/unten zielen kann (vorher hing die Breite in Spielerhöhe vom Schaukeln ab).
+var destroyer_planet_hit_scale := 0.7
 
 # ---------------------------------------------------------------------------------------------
 #  Flaggschiff
@@ -250,8 +257,10 @@ var enemy_defender_burst_shots := 2     ## [FREI, Vorgabe] Schüsse je Feuersto�
 var enemy_home_fire_rate_factor := 3.0  ## [FREI] dasselbe für die Verteidiger der Heimatwelt
 var enemy_home_burst_shots := 2         ## [FREI]
 ## [FREI] Schaden je Treffer der Fighter im Feindsystem (Empfangskomitee, Verteidiger, Verstärkung), < 0 = fighter_damage.
-## Bleibt beim Wert von 0.10.1: Die Senkung von fighter_damage in 0.10.2 galt den Kämpfen gegen Schwadrone.
-var enemy_fighter_damage := 1.8
+## Die Senkung von fighter_damage in 0.10.2 galt den Kämpfen gegen Schwadrone. 1,6 hält das Feindsystem so gefährlich
+## wie in 0.10.1 (gemessen ~1,9 statt ~2,0 Energie je abgeschossenem Verteidiger – sie sind jetzt schwerer zu treffen).
+## 1,8 = alter Trefferwert, gemessen ~15 % gefährlicher als 0.10.1.
+var enemy_fighter_damage := 1.6
 var enemy_defender_wave_delay := 1.0    ## [FREI, Vorgabe] Pause bis zur nächsten Verteidiger-Welle (s) – zwischen den Wellen bleibt kaum Zeit zum Bomben
 var enemy_defender_first_wave := 1.5    ## [FREI] erste Welle nach der Ankunft auf dem Planeten (s)
 ## [FREI, Vorgabe] Sind die Verteidiger eines Planeten vernichtet, kommt gelegentlich Verstärkung (1–3 Fighter),

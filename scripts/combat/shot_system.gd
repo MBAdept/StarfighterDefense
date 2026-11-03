@@ -120,12 +120,10 @@ func fire_ion(origin: Vector3, dir: Vector3) -> void:
 	s.node.add_child(s.light)
 	s.node.global_position = origin + combat.camera.global_transform.basis * Vector3(0, -0.9, -1.5)
 	player_shots.append(s)
-	# Zerstörer, auf die die Kugel zufliegt, dürfen ausweichen (Destroyer.on_ion_incoming)
+	# Zerstörer, auf die die Kugel zufliegt, dürfen ausweichen (Destroyer.on_ion_incoming prüft die Bahn)
 	for e in combat.enemies:
 		if e is Destroyer and is_instance_valid(e) and e.alive:
-			var to: Vector3 = e.global_position - origin
-			if rad_to_deg(dir.angle_to(to)) < 12.0:
-				e.on_ion_incoming()
+			(e as Destroyer).on_ion_incoming(origin, dir)
 
 
 ## Feindliches Geschoss in Richtung Spieler. hit_chance wird beim Einschlag gewürfelt (Ausweichen!).
