@@ -44,6 +44,7 @@ func _ready() -> void:
 	_check(grid, "Vollbild (F11)", "fullscreen")
 	_check(grid, "VSync", "vsync")
 	_choice(grid, "Grafikqualität", "quality", Settings.QUALITY_NAMES, [0, 1, 2])
+	_check(grid, "Cockpit mit Head-Up-Display (aus = klassisch)", "cockpit_view")
 	_check(grid, "Retro-Filter (Scanlines/Vignette)", "retro_filter")
 	_slider(grid, "Bildschirmwackeln", "screen_shake", 0.0, 1.5)
 	_section(grid, "STEUERUNG & ANZEIGE")

@@ -28,6 +28,9 @@ var start_with_orbit := true            ## [ORIGINAL] Spielstart im Orbit des He
 ## [FREI] Bildrate begrenzen (0 = unbegrenzt; mit VSync gilt zusätzlich die Bildwiederholrate). Schont die Grafikkarte
 ## und hält einen seltenen Absturz im Audio-Mischthread der Engine fern, der nur bei extrem hohen Bildraten auftritt.
 var max_fps := 240
+## [FREI] Cockpit-Ansicht: Nachfedern des Cockpits bei Drehungen (1 = Standard, 0 = starr) – die Ziel-
+## symbolik bleibt immer deckungsgleich mit der Welt. Ein-/Ausschalten der Ansicht: Optionen.
+var cockpit_lag := 1.0
 var difficulty_scale := 1.0             ## [FREI] Schwierigkeit (Optionen: 0.75 / 1.0 / 1.3): Gegnerschaden ×s, Schwadron-Tempo ×√s, Abstand neuer Schwadrone ÷s^0.7
 
 # ---------------------------------------------------------------------------------------------

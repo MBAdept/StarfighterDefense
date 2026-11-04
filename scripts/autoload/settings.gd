@@ -8,6 +8,9 @@ const PATH := "user://settings.cfg"
 const DIFFICULTY_SCALE := [0.75, 1.0, 1.3]
 const DIFFICULTY_NAMES := ["Leicht", "Normal", "Schwer"]
 const QUALITY_NAMES := ["Hoch", "Mittel", "Niedrig"]
+const SAVED_KEYS := ["master_volume", "music_volume", "sfx_volume", "fullscreen", "vsync", "retro_filter",
+	"cockpit_view", "screen_shake", "invert_y", "auto_weapon", "offscreen_indicators", "scanner_heading_up",
+	"orbit_fighters", "single_destroyer_stops", "difficulty", "quality"]
 
 # Audio (0..1)
 var master_volume := 0.9
@@ -17,6 +20,7 @@ var sfx_volume := 0.9
 var fullscreen := false
 var vsync := true
 var retro_filter := true      ## dezente Scanlines/Vignette
+var cockpit_view := true      ## Cockpit mit Head-Up-Display (aus = klassische flache Anzeige)
 var quality := 0              ## 0 = Hoch, 1 = Mittel, 2 = Niedrig
 var screen_shake := 1.0
 # Steuerung
@@ -47,18 +51,14 @@ func load_settings() -> void:
 	var cf := ConfigFile.new()
 	if cf.load(PATH) != OK:
 		return
-	for key in ["master_volume", "music_volume", "sfx_volume", "fullscreen", "vsync", "retro_filter",
-			"screen_shake", "invert_y", "auto_weapon", "offscreen_indicators", "scanner_heading_up",
-			"orbit_fighters", "single_destroyer_stops", "difficulty", "quality"]:
+	for key in SAVED_KEYS:
 		if cf.has_section_key("settings", key):
 			set(key, cf.get_value("settings", key))
 
 
 func save_settings() -> void:
 	var cf := ConfigFile.new()
-	for key in ["master_volume", "music_volume", "sfx_volume", "fullscreen", "vsync", "retro_filter",
-			"screen_shake", "invert_y", "auto_weapon", "offscreen_indicators", "scanner_heading_up",
-			"orbit_fighters", "single_destroyer_stops", "difficulty", "quality"]:
+	for key in SAVED_KEYS:
 		cf.set_value("settings", key, get(key))
 	cf.save(PATH)
 

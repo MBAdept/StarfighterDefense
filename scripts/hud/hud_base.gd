@@ -1,0 +1,135 @@
+class_name HudBase
+extends Control
+## =============================================================================================
+##  Gemeinsame Grundlage der Kampf-HUDs: Schnittstelle für CombatBase und Szenen (Meldungen,
+##  Punkte-Popups, Trefferrückmeldung, Waffenwechsel) und die Zeitgeber dafür.
+##   - CockpitHUD: Cockpit mit Kampfjet-Head-Up-Display (Standard, Optionen: "Cockpit-Ansicht")
+##   - ClassicHUD: die bisherige flache Anzeige
+## =============================================================================================
+
+var combat: CombatBase
+var shake_offset := Vector2.ZERO   ## Bildschirmwackeln (von CombatBase gesetzt)
+var _msgs: Array = []
+var _small: Array = []
+var _popups: Array = []
+var _t := 0.0
+var _energy_shown := 100.0
+var _hit_t := 10.0
+var _hit_heavy := false
+var _weapon_t := 10.0
+var _f_title: Font
+var _f_disp: Font
+var _f_body: Font
+var _f_mono: Font
+
+
+func _ready() -> void:
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_f_title = Assets.font("title")
+	_f_disp = Assets.font("display")
+	_f_body = Assets.font("body_bold")
+	_f_mono = Assets.font("mono")
+	_energy_shown = GameState.energy
+
+
+func _process(delta: float) -> void:
+	_t += delta
+	_hit_t += delta
+	_weapon_t += delta
+	for m in _msgs:
+		m.t += delta
+	_msgs = _msgs.filter(func(m): return m.t < m.dur)
+	for m in _small:
+		m.t += delta
+	_small = _small.filter(func(m): return m.t < m.dur)
+	for p in _popups:
+		p.t += delta
+	_popups = _popups.filter(func(p): return p.t < 1.4)
+	_energy_shown = lerpf(_energy_shown, GameState.energy, 1.0 - exp(-6.0 * delta))
+	_update(delta)
+
+
+## Von den HUDs überschrieben: Neuzeichnen anstoßen usw.
+func _update(_delta: float) -> void:
+	queue_redraw()
+
+
+# ---------------------------------------------------------------------------------------------
+#  Schnittstelle
+# ---------------------------------------------------------------------------------------------
+func show_message(title: String, sub := "", dur := 2.0, color := UITheme.CYAN, small := false) -> void:
+	var m := {"title": title, "sub": sub, "t": 0.0, "dur": dur, "color": color}
+	if small:
+		_small = [m]
+	else:
+		_msgs = [m]
+
+
+func add_popup(world: Vector3, text: String, color: Color) -> void:
+	_popups.append({"w": world, "text": text, "color": color, "t": 0.0})
+
+
+func on_player_hit(heavy: bool, _dmg: float) -> void:
+	_hit_t = 0.0
+	_hit_heavy = heavy
+
+
+func on_weapon_changed() -> void:
+	_weapon_t = 0.0
+
+
+# ---------------------------------------------------------------------------------------------
+#  Gemeinsame Hilfen
+# ---------------------------------------------------------------------------------------------
+func _project(w: Vector3) -> Dictionary:
+	var cam := combat.camera
+	if cam.is_position_behind(w):
+		return {"front": false, "pos": Vector2.ZERO}
+	return {"front": true, "pos": cam.unproject_position(w)}
+
+
+func _energy_color() -> Color:
+	var e := GameState.energy
+	if e < Config.energy_low_warning:
+		return UITheme.RED
+	if e < 50.0:
+		return UITheme.AMBER
+	return UITheme.GREEN
+
+
+## Lage-Zeilen [Bezeichnung, Wert, Farbe, (Zerstörerfarben)] für die aktuelle Kampfszene.
+func _lage_lines() -> Array:
+	var fl := false
+	for e in combat.enemies:
+		if is_instance_valid(e) and e.alive and e.kind == Enemy.Kind.FLAGSHIP:
+			fl = true
+	var lines := []
+	if combat is SpaceCombat:
+		var sc: SpaceCombat = combat
+		if (sc.mode == SpaceCombat.Mode.ORBIT and not sc.orbit_done) or (sc.mode == SpaceCombat.Mode.RECEPTION and sc.phase == SpaceCombat.Phase.FIGHTERS):
+			lines.append(["FIGHTER", "%d / %d" % [sc.orbit_total - sc.orbit_killed, sc.orbit_total], UITheme.FIGHTER_COLOR])
+		elif sc.squadron and sc.squadron.state != SquadronData.State.DESTROYED and not sc.is_docking():
+			lines.append(["FIGHTER", "%d" % sc.squadron.fighters, UITheme.FIGHTER_COLOR])
+			if sc.mode == SpaceCombat.Mode.SQUADRON:
+				lines.append(["ZERSTÖRER", str(sc.squadron.destroyers.size()), UITheme.AMBER, sc.squadron.destroyer_colors()])
+		if fl:
+			lines.append(["FLAGGSCHIFF", "AKTIV", UITheme.PINK])
+	elif combat is PlanetCombat and (combat as PlanetCombat).enemy_mode:
+		var ep: PlanetCombat = combat
+		lines.append(["FEINDSTÄDTE", "%d / %d" % [ep.planet.alive_cities(), ep.planet.cities.size()], Color(1.0, 0.4, 0.62)])
+		var rf := ep.reinforcements_alive()
+		if rf > 0:
+			lines.append(["VERSTÄRKUNG", "%d" % rf, UITheme.FIGHTER_COLOR])   # nur bei 0 Verteidigern: ersetzt die Zeile
+		else:
+			lines.append(["VERTEIDIGER", "%d" % ep.planet.defenders, UITheme.FIGHTER_COLOR if ep.planet.defenders > 0 else UITheme.GREEN])
+		lines.append(["BOMBEN", "%d / %d" % [GameState.bombs, Config.bombs_max], UITheme.AMBER if GameState.bombs > 0 else UITheme.RED])
+	elif combat is PlanetCombat:
+		var pc: PlanetCombat = combat
+		lines.append(["STÄDTE", "%d / %d" % [pc.planet.alive_cities(), pc.planet.cities.size()], UITheme.CYAN])
+		if pc.squadron and pc.squadron.state != SquadronData.State.DESTROYED:
+			lines.append(["FIGHTER", "%d" % pc.squadron.fighters, UITheme.FIGHTER_COLOR])
+			lines.append(["ZERSTÖRER", str(pc.squadron.destroyers.size()), UITheme.AMBER, pc.squadron.destroyer_colors()])
+	if lines.is_empty():
+		lines.append(["KONTAKTE", "KEINE", UITheme.GREEN])
+	return lines

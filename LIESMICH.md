@@ -53,6 +53,30 @@ Tipps:
 - **Ausweichen**: Wer im Moment des Einschlags kräftig lenkt (auf Planeten: schnell fliegt), halbiert die Trefferchance des Gegners. Laser können anfliegende Geschosse auch abschießen.
 - **Taktik**: Kleinere Schwadrone fliegen langsamer. Ein angeschlagenes Schwadron zu verlangsamen kann klüger sein, als es ganz auszulöschen.
 
+## Cockpit-Ansicht (Head-Up-Display)
+
+Seit 0.11.0 sitzt du in einem echten 3D-Cockpit. Die Anzeigen leuchten wie bei einem Kampfjet auf einer schrägen Combiner-Scheibe vor dir, statt als flache Fläche über dem Bild zu liegen.
+
+- **Auf dem Glas**:
+  - Visier (Bordlaser-Klammern bzw. Ionen-Fadenkreuz)
+  - links die **Energieskala** mit Ablesefeld, rechts die **Waffenskala** (Laser, Ladezustand der Ionen-Kanone bzw. Bomben)
+  - oben Punkte, Zeit/Stufe und ein **Kursband**, dazu eine dezente Neigungsleiter
+  - unten links die **Lage**, unten rechts Waffe und Modus
+  - die großen Meldungen
+- **Helmanzeige (im ganzen Blickfeld, genau auf den Zielen)**:
+  - Zielklammern mit Entfernung und Schildkästchen
+  - Flaggschiff-Quadrat, Bombenbahn und Aufschlagtext, Punkte
+  - Pfeile zu Gegnern außerhalb der Sicht
+  - Spalte links: Ort, Lage-Untertitel und Bedienhinweise
+  - Spalte rechts: Meldungen der Systemkarte
+- **Konsole**:
+  - drei Bildschirme: NAV links, in der Mitte der **Planetenscanner** bzw. Andocken/Tanken bzw. Waffenstatus, DATENLINK rechts
+  - Warnlampen, z. B. TREFFER, ENERGIE, GESCHOSS, ZIEL, BOMBEN, ANDOCKEN
+- **Bewegung**: Bei Drehungen federt das Cockpit leicht nach, bei Treffern wackelt es und das Licht blitzt rot. Die Zielsymbolik bleibt dabei immer deckungsgleich mit der Welt.
+- **Einstellungen**:
+  - **Optionen → „Cockpit mit Head-Up-Display“** schaltet auf die bisherige flache Anzeige zurück, auch mitten im Kampf.
+  - Die Trägheit lässt sich über `cockpit_lag` in der `balance.cfg` einstellen (0 = starr).
+
 ## Steuerung
 
 | Aktion | Tastatur | Gamepad |
@@ -133,7 +157,18 @@ Eine Vorlage mit allen Werten schreibt das Spiel beim Start nach `balance_templa
 
 Dort liegen auch `highscores.json` und `settings.cfg`.
 
-Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automatische Waffenwahl, 9/12 Fighter im Orbit, die [VERMUTET]-Regel „Schwadron mit nur einem Zerstörer bleibt zeitweise stehen“, Schwierigkeit, Scanner-Ausrichtung, Randpfeile und Retro-Filter.
+Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automatische Waffenwahl, 9/12 Fighter im Orbit, die [VERMUTET]-Regel „Schwadron mit nur einem Zerstörer bleibt zeitweise stehen“, Schwierigkeit, Scanner-Ausrichtung, Randpfeile, Retro-Filter und die Cockpit-Ansicht.
+
+## Änderungen in Version 0.11.0 – Cockpit mit Head-Up-Display
+
+- **Neue Cockpit-Ansicht** (Standard). Die Anzeigen sehen nicht mehr wie ein Overlay aus: Combiner-Glas mit Leuchtsymbolik, 3D-Cockpit mit Konsole, drei Bildschirmen und Warnlampen, Kanzelrahmen, Nachfedern bei Drehungen. Details siehe „Cockpit-Ansicht“ oben.
+- Entstanden aus drei Prototypen (VR-Holo-Cockpit, Kampfjet-HUD, Helmvisier), die von zwei Gutachtern verglichen wurden. Die Kampfjet-Variante wurde übernommen und um Ideen der anderen ergänzt:
+  - kompakte Konsole, Pfeile innerhalb der Kanzel
+  - Kontrastsäume für hellen Himmel und Explosionen
+  - Bildschirme in nativer Auflösung (scharf bei 720p und 4K)
+  - Einschalt-Sweep beim Szenenstart
+- Die bisherige flache Anzeige bleibt erhalten: **Optionen → „Cockpit mit Head-Up-Display“** aus.
+- Testhilfen: `--classic` (klassisches HUD), `--bombmode` (Bombenmodus über Feindplaneten), `--toggle_hud=N` (Ansicht nach N s umschalten).
 
 ## Änderungen in Version 0.10.2 (nach dem zweiten Spieltest)
 
@@ -220,7 +255,10 @@ scripts/autoload/game_state.gd  Strategische Simulation (Planeten, Schwadrone, S
 scripts/main.gd               Zustände, Karte, Sprünge, Pause, Testtasten
 scripts/combat/               Weltraum-/Planetenkampf, Fighter, Zerstörer, Flaggschiff, Projektile
 scripts/map/map_screen.gd     Systemkarte
-scripts/hud/cockpit_hud.gd    Cockpit-HUD (Klammer-Visier, Fadenkreuz, Energie, Scanner)
+scripts/hud/cockpit_hud.gd    Cockpit-Ansicht: Head-Up-Display auf dem Combiner-Glas, Helmanzeige
+scripts/hud/cockpit_rig.gd    3D-Cockpit (Konsole, Kanzel, Combiner-Glas, Warnlampen, Nachfedern)
+scripts/hud/cockpit_mfd.gd    Bildschirme der Konsole (NAV, Scanner/Andocken/Waffen, Datenlink)
+scripts/hud/classic_hud.gd    klassische flache Anzeige (Optionen)
 shaders/                      Himmel, Planeten, Boden, Schilde, Explosionen, Hyperraum, Nachbearbeitung
 assets/                       Modelle (glb), Texturen, Audio, Schriften (OFL)
 tools/                        Generatoren: Blender-Modelle, Texturen, Klangsynthese/Komposition

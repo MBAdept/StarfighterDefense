@@ -14,7 +14,7 @@ var sun: DirectionalLight3D
 var fx_root: Node3D
 var shots: ShotSystem
 var hud_layer: CanvasLayer
-var hud: CockpitHUD
+var hud: HudBase
 var enemies: Array = []
 var frozen := false
 var dying := false
@@ -73,13 +73,27 @@ func _ready() -> void:
 	hud_layer = CanvasLayer.new()
 	hud_layer.layer = 5
 	add_child(hud_layer)
-	hud = CockpitHUD.new()
-	hud.combat = self
-	hud_layer.add_child(hud)
+	_make_hud()
+	Settings.changed.connect(_on_settings_changed)
 	GameState.energy_changed.connect(_on_energy_changed)
 	Audio.loop_start("engine", "engine_loop", 0.0, 1.0)
 	# erst nach dem _ready() der Unterklasse wählen (Modus/Phase sind dann gesetzt)
 	_apply_music.call_deferred()
+
+
+## HUD gemäß Optionen: Cockpit mit Head-Up-Display oder klassische flache Anzeige.
+func _make_hud() -> void:
+	hud = CockpitHUD.new() if Settings.cockpit_view else ClassicHUD.new()
+	hud.combat = self
+	hud_layer.add_child(hud)
+
+
+func _on_settings_changed() -> void:
+	if hud == null or (hud is CockpitHUD) == Settings.cockpit_view:
+		return
+	# Ansicht in den Optionen umgeschaltet: HUD neu aufbauen (Meldungen gehen dabei verloren)
+	hud.queue_free()
+	_make_hud()
 
 
 ## Von Unterklassen überschrieben: Umgebung, Licht, Hintergrund.

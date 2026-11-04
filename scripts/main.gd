@@ -437,6 +437,11 @@ func _run_test_scenario() -> void:
 		move_child(ap, 0)
 	if _test.has("simspeed"):
 		GameState.time_scale = float(_test["simspeed"])
+	if _test.has("classic"):
+		Settings.cockpit_view = false   # Testhilfe: klassisches HUD (wird nicht gespeichert)
+	if _test.has("holdsteer"):
+		# Testhilfe: Lenkung dauerhaft halten (left/right/up/down), z. B. für Bilder des nachfedernden Cockpits
+		Input.action_press("steer_" + str(_test["holdsteer"]))
 	if _test.has("holdfire"):
 		Input.action_press("fire")
 
@@ -540,6 +545,17 @@ func _run_test_scenario() -> void:
 			_set_scene(SpaceCombat.create_empty(), State.SPACE)
 			await get_tree().process_frame
 			open_map()
+	if _test.has("toggle_hud"):
+		# Testhilfe: Cockpit-Ansicht nach N Sekunden umschalten (wie in den Optionen mitten im Kampf)
+		get_tree().create_timer(float(_test["toggle_hud"])).timeout.connect(func():
+			Settings.cockpit_view = not Settings.cockpit_view
+			Settings.apply()
+			print("[Test] HUD umgeschaltet: ", "Cockpit" if Settings.cockpit_view else "klassisch"))
+	if _test.has("bombmode"):
+		# Testhilfe: über Feindplaneten gleich in den Bombenmodus schalten (Screenshots des Bombenvisiers)
+		await get_tree().create_timer(0.3).timeout
+		if scene is CombatBase:
+			(scene as CombatBase).weapon_manual = CombatBase.Weapon.BOMB
 	if _test.has("shot"):
 		var wait := float(_test.get("wait", "3"))
 		if _test.has("look"):

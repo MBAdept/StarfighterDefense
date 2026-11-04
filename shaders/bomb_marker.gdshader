@@ -2,6 +2,8 @@ shader_type spatial;
 // Aufschlagmarke der Bomben: Ring = Trefferradius (bomb_hit_radius), rotierender Strichring, Fadenkreuz.
 // lock = 1: eine intakte Stadt liegt im Trefferkreis (grün, schnelleres Pulsieren). Immer sichtbar (kein Tiefentest).
 render_mode unshaded, blend_add, cull_disabled, depth_draw_never, depth_test_disabled, shadows_disabled, fog_disabled;
+// … außer über dem Cockpit (dessen Teile schreiben Stencil 1, siehe CockpitRig)
+stencil_mode read, compare_not_equal, 1;
 
 uniform vec4 marker_color : source_color = vec4(1.0, 0.72, 0.22, 1.0);
 uniform float energy = 2.2;
