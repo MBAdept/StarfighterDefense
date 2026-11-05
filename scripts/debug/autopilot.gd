@@ -650,6 +650,12 @@ func _choose_jump() -> void:
 				continue   # mit wenig Energie nicht mitten in einen Stationskampf springen
 			if best == null or s.map_pos().distance_to(me) < best.map_pos().distance_to(me):
 				best = s
+		if best == null and not Config.star_refuel_enabled:
+			# [0.14.2] alle Stationen angegriffen oder besetzt und kein Sterntanken: die nächste befreien
+			# (sonst pendelt der Testfahrer zwischen Flucht und gelandetem Schwadron)
+			for s in GameState.stations:
+				if not s.destroyed and (best == null or s.map_pos().distance_to(me) < best.map_pos().distance_to(me)):
+					best = s
 		# nur Energie nötig und der Stern liegt nicht weiter weg: dort schnell tanken (ohne Reparatur und Bomben)
 		if not rearm and not repair_now and Config.star_refuel_enabled and GameState.player_loc != GameState.Loc.STAR \
 				and (best == null or GameState.jump_cost_to(GameState.Loc.STAR, GameState.STAR_POS) <= GameState.jump_cost_to(GameState.Loc.STATION, best.map_pos()) + 0.5):

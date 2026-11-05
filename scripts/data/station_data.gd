@@ -11,6 +11,7 @@ var integrity := 100.0          ## [FREI] sinkt, solange Fighter unverteidigt an
 var destroyed := false
 var attacker := -1              ## Schwadron-ID des Angreifers (-1 = keiner)
 var destroyed_at := -1.0        ## Strategiezeit der Zerstörung (Wiederaufbau: die zuerst zerstörte)
+var occupied := false           ## [Vorgabe 0.14.2] besetzt: Integrität 0, die Fighter des Angreifers halten die Station
 
 
 func map_pos() -> Vector2:

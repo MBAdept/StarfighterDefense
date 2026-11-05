@@ -531,12 +531,22 @@ func _run_test_scenario() -> void:
 			sq2.target_id = 0
 			sq2.map_pos = GameState.stations[0].map_pos()
 			GameState._arrive(sq2)
+			if _test.has("occupied"):
+				GameState._occupy_station(GameState.stations[0])   # Testhilfe: Station ist schon besetzt
 			_enter_location(GameState.Loc.STATION, 0)
 		"map":
 			GameState.start_campaign()
 			GameState.time_scale = 1.0
 			if _test.has("awaken"):
 				GameState.debug_awaken_second()   # Testhilfe: zweites Feindsystem greift an (Sprungpunkt in Helion unten rechts)
+			if _test.has("occupy"):
+				# Testhilfe: Station Alpha von einem Schwadron besetzt (0.14.2: besetzbar, aber nicht zerstörbar)
+				var osq: SquadronData = GameState.squadrons[0]
+				osq.target_kind = SquadronData.TargetKind.STATION
+				osq.target_id = 0
+				osq.map_pos = GameState.stations[0].map_pos()
+				GameState._arrive(osq)
+				GameState._occupy_station(GameState.stations[0])
 			_set_scene(SpaceCombat.create_orbit(true), State.ORBIT)
 			await get_tree().process_frame
 			open_map()
@@ -544,6 +554,8 @@ func _run_test_scenario() -> void:
 				map_screen._select(GameState.Loc.ENEMY_SYSTEM, 1, false)
 			if _test.get("select", "") == "enemy2" and map_screen and GameState.second_active:
 				map_screen._select(GameState.Loc.ENEMY_SYSTEM, 2, false)
+			if _test.get("select", "") == "station" and map_screen:
+				map_screen._select(GameState.Loc.STATION, 0, false)
 			if _test.has("enemyview") and map_screen:
 				map_screen.toggle_view()
 			if _test.has("view") and map_screen:

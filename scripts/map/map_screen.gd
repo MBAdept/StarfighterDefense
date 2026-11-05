@@ -786,7 +786,8 @@ func _draw_station_icon(f: Control, s: StationData) -> void:
 	var short_name := s.name.to_upper().replace("STATION ", "ST. ")
 	_text(f, sp + Vector2(r + 8, -4), short_name, _f_disp, 12, Color(col, 0.9))
 	if attacked:
-		_text(f, sp + Vector2(r + 8, 16), "%d %%" % int(s.integrity), _f_mono, 16, Color(UITheme.RED, 0.9))
+		# [0.14.2] besetzte Station: statt der Integrität „BESETZT“
+		_text(f, sp + Vector2(r + 8, 16), "BESETZT" if s.occupied else "%d %%" % int(s.integrity), _f_mono, 16, Color(UITheme.RED, 0.9))
 
 
 func _draw_squadron(f: Control, sq: SquadronData) -> void:
@@ -915,21 +916,36 @@ func _draw_panel(vp: Vector2) -> void:
 			y += 32
 			_text(f, Vector2(x, y), "RAUMSTATION · Reparatur & Energie", _f_bold, 22, Color(0.55, 1.0, 0.8, 0.9))
 			y += 46
-			if s.attacker != -1:
+			if s.attacker != -1 and s.occupied:
+				# [Vorgabe 0.14.2] besetzt, aber nicht zerstörbar: befreien durch Vernichten der Fighter
+				var sq5 := GameState.squadron_by_id(s.attacker)
+				_text(f, Vector2(x, y), "BESETZT!", _f_disp, 24, UITheme.RED if fmod(_t, 0.6) < 0.4 else Color(1, 0.7, 0.4))
+				y += 32
+				_text(f, Vector2(x, y), "Kein Tanken, keine Bomben, keine Reparatur", _f_body, 22, UITheme.TEXT)
+				y += 28
+				if sq5:
+					_text(f, Vector2(x, y), ("%d Fighter hält die Station" if sq5.fighters == 1 else "%d Fighter halten die Station") % sq5.fighters, _f_body, 22, UITheme.TEXT)
+					y += 28
+				_text(f, Vector2(x, y), "Fighter vernichten, um sie zu befreien.", _f_body, 20, UITheme.TEXT_DIM)
+				y += 28
+			elif s.attacker != -1:
 				var sq3 := GameState.squadron_by_id(s.attacker)
 				_text(f, Vector2(x, y), "WIRD ANGEGRIFFEN!", _f_disp, 24, UITheme.RED if fmod(_t, 0.6) < 0.4 else Color(1, 0.7, 0.4))
 				y += 32
 				_text(f, Vector2(x, y), "Integrität: %d %%" % int(s.integrity), _f_body, 22, UITheme.TEXT)
 				y += 28
 				if sq3:
-					_text(f, Vector2(x, y), "%d Fighter greifen an" % sq3.fighters, _f_body, 22, UITheme.TEXT)
+					_text(f, Vector2(x, y), ("%d Fighter greift an" if sq3.fighters == 1 else "%d Fighter greifen an") % sq3.fighters, _f_body, 22, UITheme.TEXT)
 					y += 28
+				if not Config.station_can_be_destroyed:
+					_text(f, Vector2(x, y), "Bei 0 % ist sie besetzt.", _f_body, 20, UITheme.TEXT_DIM)
+					y += 26
 				_text(f, Vector2(x, y), "Erst die Fighter vernichten, dann andocken.", _f_body, 20, UITheme.TEXT_DIM)
 				y += 28
 			else:
 				_text(f, Vector2(x, y), "Betriebsbereit", _f_bold, 22, UITheme.GREEN)
 				y += 30
-				_text(f, Vector2(x, y), "Andocken: Energie auf 100 %%", _f_body, 22, UITheme.TEXT)
+				_text(f, Vector2(x, y), "Andocken: Energie auf 100 %", _f_body, 22, UITheme.TEXT)
 				y += 28
 				_text(f, Vector2(x, y), "(%d %% pro Sekunde)" % int(Config.refuel_rate), _f_body, 20, UITheme.TEXT_DIM)
 				y += 28
@@ -984,7 +1000,11 @@ func _draw_panel(vp: Vector2) -> void:
 						_text(f, Vector2(x, y), "Gelandet auf " + GameState.squadron_target_name(sq4), _f_bold, 22, UITheme.RED)
 						y += 28
 					SquadronData.State.AT_STATION:
-						_text(f, Vector2(x, y), "Greift " + GameState.squadron_target_name(sq4) + " an", _f_bold, 22, UITheme.RED)
+						var st4: StationData = GameState.stations[sq4.target_id]
+						if st4.occupied:
+							_text(f, Vector2(x, y), "Hält %s besetzt" % st4.name, _f_bold, 22, UITheme.RED)
+						else:
+							_text(f, Vector2(x, y), "Greift %s an" % st4.name, _f_bold, 22, UITheme.RED)
 						y += 28
 				_text(f, Vector2(x, y), "Kleinere Schwadrone fliegen langsamer.", _f_body, 19, UITheme.TEXT_DIM)
 				y += 26

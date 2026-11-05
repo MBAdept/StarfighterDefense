@@ -24,7 +24,7 @@ Am Ende steht immer eine **Auswertung**: bei Sieg, Game Over und vorzeitigem Abb
 2. **Systemkarte (Leertaste)**: Ziel wählen (Planet, Station, Schwadron) und springen. Ein Sprung kostet Energie, je weiter, desto mehr (2,5–12 %).
 3. **Weltraumkampf**: Erst die Fighter (Bordlaser), danach die Zerstörer nacheinander (Ionen-Kanone). Sie stehen knapp außerhalb des Sichtfelds, also links oder rechts suchen. Ein Flaggschiff kann zusätzlich auftauchen.
 4. **Planetenkampf**: Die Zerstörer schweben über Städten und bombardieren sie. Im Scanner blinkt die bombardierte Stadt. Sind alle Zerstörer vernichtet, ist der Planet gerettet.
-5. **Raumstation**: Andocken, auftanken (10 %/s in 5-%-Schritten), **Bomben nachladen** und **Systemschäden reparieren**. Wird die Station angegriffen, erst die Fighter vernichten. Sind beide Stationen zerstört, wird eine nach 3 Minuten wieder aufgebaut (ab 0.14.1, Countdown auf der Karte).
+5. **Raumstation**: Andocken, auftanken (10 %/s in 5-%-Schritten), **Bomben nachladen** und **Systemschäden reparieren**. Wird die Station angegriffen, erst die Fighter vernichten. Stationen sind **besetzbar, aber nicht zerstörbar** (ab 0.14.2): Fällt die Integrität einer angegriffenen Station auf 0 %, ist sie **besetzt**. Die Fighter bleiben dort, Tanken, Bomben und Reparatur gibt es dort nicht mehr. Vernichtest du die Fighter, ist die Station befreit und wieder voll einsatzbereit.
 6. **Stern** (Helion, Vorrhal bzw. Ixmora, Kartenmitte): Energie fast sofort auffüllen, aber schnell wieder weg. Siehe „Sterne und Systemschäden“.
 7. **Feindsystem**: Siehe nächster Abschnitt.
 
@@ -259,11 +259,20 @@ Dort liegen auch `highscores.json` und `settings.cfg`.
 
 Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automatische Waffenwahl, 9/12 Fighter im Orbit, die [VERMUTET]-Regel „Schwadron mit nur einem Zerstörer bleibt zeitweise stehen“, Scanner-Ausrichtung, Randpfeile, Retro-Filter und die Cockpit-Ansicht. Die Schwierigkeit lässt sich nur im Hauptmenü ändern.
 
+## Änderungen in Version 0.14.2 – Stationen besetzbar statt zerstörbar
+
+- **Stationen werden nicht mehr zerstört**, sondern **besetzt**: Bei 0 % Integrität halten die Fighter des Angreifers die Station. Tanken, Bomben und Reparatur sind dort gesperrt, bis du die Fighter vernichtest. Danach ist die Station befreit (100 %) und sofort wieder nutzbar. Das besetzende Schwadron bleibt an der Station und greift keine Städte an.
+- Karte: „BESETZT“ an der Station, im Infofenster der Hinweis zum Befreien, beim Schwadron „Hält Station … besetzt“. Im Cockpit: „STATION BESETZT!“ bzw. „STATION BEFREIT“.
+- Wer zerstörbare Stationen will: `station_can_be_destroyed=true` in der `balance.cfg` (dann gilt wieder der Wiederaufbau aus 0.14.1). Achtung: Eine `balance.cfg`, die als vollständige Kopie einer älteren `balance_template.cfg` entstanden ist, enthält noch `station_can_be_destroyed=true`. Diese Zeile löschen, sonst bleiben die Stationen zerstörbar.
+- **Behoben**: Der Wiederaufbau aus 0.14.1 fand im Spiel nie statt. Der Countdown lief ab, der Zähler landete aber bei echten Bildzeiten knapp unter 0, und die Station blieb zerstört. Betrifft seit 0.14.2 nur noch `station_can_be_destroyed=true`.
+- Nach einer Befreiung oder Verteidigung zeigt die Ortszeile im HUD wieder „Reparatur & Energie“. Bisher blieb „WIRD ANGEGRIFFEN!“ bzw. „BESETZT!“ bis zum Ende des Tankens stehen. Außerdem: Das Stations-Infofenster zeigte „100 %%“, und bei einem einzelnen Fighter heißt es jetzt „1 Fighter hält …“.
+- Neue Testhilfen: `--test=map --occupy --select=station` (Station Alpha besetzt und ausgewählt), `--test=station_attack --occupied`.
+
 ## Änderungen in Version 0.14.1 – Hart und Experte entschärft
 
 - **Ixmora kleiner**: 8–10 Städte je äußerem Planeten, Heimatwelt 12 (vorher 15–17 bzw. 20), normales Einsatzgebiet (`second_city_count_min/max`, `second_home_city_count`, `second_planet_area_factor`).
 - **Weniger Druck**: Die +10 % Schwadron-Tempo von Hart/Experte gelten nur noch in Helion (`squadron_speed_factor`). In Ixmora fliegen die Schwadrone 20 % langsamer zum Sprungpunkt (`second_transit_speed_factor=0.8`), in Vorrhal normal.
-- **Kein Festfahren ohne Stationen**: Sind beide Stationen zerstört, wird die zuerst zerstörte nach 3 Minuten wieder aufgebaut (`station_rebuild_time`, 0 = nie). Bisher gab es dann nie wieder Bomben: Die Partie ließ sich nicht mehr gewinnen und lief, sobald kein Nachschub mehr kam, endlos weiter. In den Messungen von 0.14.0/0.14.1 fielen in 5 Partien auf Hart/Experte beide Stationen; 3 davon liefen ohne Ergebnis bis zum Abbruch nach 150 Minuten.
+- **Kein Festfahren ohne Stationen** (seit 0.14.2 nur noch mit `station_can_be_destroyed=true`, denn Stationen werden jetzt besetzt statt zerstört): Sind beide Stationen zerstört, wird die zuerst zerstörte nach 3 Minuten wieder aufgebaut (`station_rebuild_time`, 0 = nie; wirksam erst ab 0.14.2, siehe dort). Bisher gab es dann nie wieder Bomben: Die Partie ließ sich nicht mehr gewinnen und lief, sobald kein Nachschub mehr kam, endlos weiter. In den Messungen von 0.14.0/0.14.1 fielen in 5 Partien auf Hart/Experte beide Stationen; 3 davon liefen ohne Ergebnis bis zum Abbruch nach 150 Minuten.
 - **Experte-Auslöser gelockert**: Ixmora greift an, sobald in Helion erstmals 60 Sekunden lang höchstens ein Schwadron unterwegs ist (vorher: ohne jedes Schwadron; `second_system_empty_time`, `second_system_empty_max`) – oder wie bisher beim Produktionsstopp von Vorrhal. Der Kartenhinweis zeigt den Countdown auch bei einem verbliebenen Schwadron. Gemessen wurden drei Varianten: „30 s ohne Schwadron“ griff nie, „30 s mit höchstens einem“ einmal schon nach 6 Minuten (Partie verloren), „60 s mit höchstens einem“ gelegentlich mitten im Spiel.
 
 ## Änderungen in Version 0.14.0 – Zweites Feindsystem, Stufen Hart und Experte
@@ -387,6 +396,7 @@ Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automati
 ## Stand / offene Punkte
 
 - **Militär-Rang und Siegbonus** folgen nach deinen Tests. Vorgesehen ist `bonus_victory` in `config.gd`, derzeit 0.
+- **Messung 0.14.2** (Kontrolle nach der Umstellung auf besetzbare Stationen, 6 Partien): Alle gewonnen. Hart mit Angriff nach 40 und 46 Minuten (28 bzw. 56 von ~80 Städten verloren), Experte mit Angriff nach 53 (68 verloren), Experte ungeduldig nach 103 (43 verloren), Fortgeschritten mit Angriff nach 27, Anfänger nach 13 Minuten. In 2 Partien wurden insgesamt 3 Stationen besetzt. Der Testfahrer befreite sie jeweils nach 35 Sekunden bis 2½ Minuten. Zerstört wurde keine Station.
 - **Messung 0.14.1** (Hart und Experte nach der Entschärfung; Experte mit dem Auslöser „60 s, höchstens ein Schwadron“), sonst wie bei 0.14.0. Spielzeit bis zum Sieg in Minuten:
 
   | Stufe | Angriff | vorsichtig | ungeduldig |
@@ -396,7 +406,7 @@ Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automati
 
   - Gegenüber 0.14.0 gewinnt der vorsichtige Testfahrer auf Hart jetzt (vorher 2 von 3 Partien festgefahren), der ungeduldige gewinnt alle Partien (vorher 1 von 3).
   - Ixmora griff auf Experte einmal schon nach 30 Minuten über den neuen Auslöser an, sonst nach 23–102 Minuten über den Produktionsstopp von Vorrhal.
-  - Eine weitere Hart-Partie lief vor der Behebung in den Stations-Stillstand (beide Stationen zerstört, 116 von 121 Feindstädten zerbombt). Seit dem Wiederaufbau einer Station kann das nicht mehr passieren.
+  - Eine weitere Hart-Partie lief vor der Behebung in den Stations-Stillstand (beide Stationen zerstört, 116 von 121 Feindstädten zerbombt). Seit 0.14.2 kann das nicht mehr passieren: Stationen werden nur noch besetzt, und mit `station_can_be_destroyed=true` greift der reparierte Wiederaufbau.
 - **Messung 0.14.0** (Hart und Experte) mit dem menschenähnlichen Testfahrer, Abbruch nach 150 Minuten Spielzeit. „Angriff“ = Sturmangriff (`--raid`), „vorsichtig“ = Verteidigung zuerst (`--raid_safe`), „ungeduldig“ = Verteidigung zuerst, aber nach 8 Minuten ohne Angriff greift er trotzdem an (`--raid_safe --raid_patience=480`). Spielzeit bis zum Sieg in Minuten:
 
   | Stufe | Angriff | vorsichtig | ungeduldig |

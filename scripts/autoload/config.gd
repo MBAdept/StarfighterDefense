@@ -120,9 +120,13 @@ var damage_screen_wobble := 3.0         ## Bildpunkte (bei 1080p) Schwanken der 
 var refuel_rate := 10.0                 ## [ORIGINAL] ca. 10 % pro Sekunde …
 var refuel_step := 5.0                  ## [ORIGINAL] … sichtbar in 5-%-Schritten
 var station_damage_per_fighter := 0.07  ## [FREI] % Stationsintegrität pro Sekunde und angreifendem Fighter (ohne squadron_fighter_factor gezählt)
-var station_can_be_destroyed := true    ## [FREI] unverteidigte Stationen können zerstört werden
-## [FREI 0.14.1] Sind ALLE Stationen zerstört, wird nach so vielen Sekunden (Strategiezeit) eine wieder aufgebaut –
-## sonst gäbe es nie wieder Bomben und eine Partie mit Feindstädten ließe sich nicht mehr gewinnen. 0 = nie.
+## [Vorgabe 0.14.2] Stationen sind besetzbar, aber nicht zerstörbar: Fällt die Integrität einer angegriffenen Station
+## auf 0 %, ist sie besetzt – die Fighter bleiben, kein Tanken, keine Bomben, keine Reparatur –, bis der Spieler sie
+## vernichtet. true = zerstörbar wie bis 0.14.1.
+var station_can_be_destroyed := false
+var station_liberated_integrity := 100.0   ## [FREI 0.14.2] Integrität einer befreiten Station (%)
+## [FREI 0.14.1] Nur mit station_can_be_destroyed = true: Sind ALLE Stationen zerstört, wird nach so vielen Sekunden
+## (Strategiezeit) eine wieder aufgebaut – sonst gäbe es nie wieder Bomben. 0 = nie.
 var station_rebuild_time := 180.0
 
 # ---------------------------------------------------------------------------------------------

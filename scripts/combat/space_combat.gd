@@ -41,6 +41,7 @@ var dock_from := Vector3.ZERO
 var refuel_t := 0.0
 var bomb_t := 0.0
 var _repaired := ""           ## beim Andocken reparierter Systemschaden (Meldung)
+var _station_was_occupied := false   ## [0.14.2] Verteidigung einer besetzten Station (Meldung „befreit“)
 var _cam_center_from := Vector2.ZERO
 var _done_handled := false
 var arrival_home := false
@@ -780,8 +781,14 @@ func _on_squadron_destroyed(sq: SquadronData) -> void:
 func _start_station_defense() -> void:
 	phase = Phase.FIGHTERS
 	wave_timer = 1.8
-	location_sub = "WIRD ANGEGRIFFEN!"
-	hud.show_message("STATION WIRD ANGEGRIFFEN!", "%d Fighter – nur Fighter greifen Stationen an" % squadron.fighters, 2.8, UITheme.RED)
+	_station_was_occupied = station != null and station.occupied
+	if _station_was_occupied:
+		# [Vorgabe 0.14.2] besetzte Station: die Fighter halten sie, bis sie vernichtet sind
+		location_sub = "BESETZT!"
+		hud.show_message("STATION BESETZT!", ("%d Fighter hält %s – vernichten, um sie zu befreien" if squadron.fighters == 1 else "%d Fighter halten %s – vernichten, um sie zu befreien") % [squadron.fighters, station.name], 3.0, UITheme.RED)
+	else:
+		location_sub = "WIRD ANGEGRIFFEN!"
+		hud.show_message("STATION WIRD ANGEGRIFFEN!", "%d Fighter – nur Fighter greifen Stationen an" % squadron.fighters, 2.8, UITheme.RED)
 	if not frozen:
 		Audio.play_music("combat_space")   # bei offener Karte übernimmt close_map() die Musik
 	controls_enabled = true
@@ -799,7 +806,10 @@ func _on_squadron_at_station(sq: SquadronData, st: StationData) -> void:
 
 
 func _after_station_defense() -> void:
-	hud.show_message("STATION VERTEIDIGT", "+%d Bonus · Andocken beginnt" % Config.bonus_station_defended, 3.0, UITheme.GREEN)
+	hud.show_message("STATION BEFREIT" if _station_was_occupied else "STATION VERTEIDIGT", "+%d Bonus · Andocken beginnt" % Config.bonus_station_defended, 3.0, UITheme.GREEN)
+	_station_was_occupied = false
+	# Ortszeile zurück auf den Normalzustand (bis 0.14.1 blieb „WIRD ANGEGRIFFEN!“ bis zum Tankende stehen)
+	location_sub = "Reparatur & Energie"
 	Audio.sfx("squadron_destroyed")
 	var tw := create_tween()
 	tw.tween_interval(2.6)

@@ -203,7 +203,7 @@ func new_game() -> void:
 		"planets_saved": 0, "stations_defended": 0, "jumps": 0, "energy_refueled": 0.0,
 		"enemy_cities": 0, "bombs_dropped": 0, "bombs_hit": 0, "enemy_jumps": 0, "receptions": 0,
 		"enemy_squadrons_intercepted": 0, "star_visits": 0, "star_energy": 0.0,
-		"damages": 0, "repairs": 0, "damage_kinds": {}, "enemy2_cities": 0,
+		"damages": 0, "repairs": 0, "damage_kinds": {}, "enemy2_cities": 0, "stations_occupied": 0,
 		"points": {"fighters": 0, "destroyers": 0, "flagships": 0, "enemy_cities": 0, "bonus": 0}}
 	_create_planets()
 	_create_stations()
@@ -717,10 +717,13 @@ func _update_squadron(sq: SquadronData, dt: float) -> void:
 				_liftoff(sq, "")
 				return
 			# Fighter ohne squadron_fighter_factor gerechnet: Stationen fallen so schnell wie in 0.11.0
-			s.integrity -= Config.station_damage_per_fighter * float(sq.fighters) / maxf(Config.squadron_fighter_factor, 0.01) * dt
-			if s.integrity <= 0.0 and Config.station_can_be_destroyed:
-				_destroy_station(s)
-				_liftoff(sq, "")
+			s.integrity = maxf(s.integrity - Config.station_damage_per_fighter * float(sq.fighters) / maxf(Config.squadron_fighter_factor, 0.01) * dt, 0.0)
+			if s.integrity <= 0.0:
+				if Config.station_can_be_destroyed:
+					_destroy_station(s)
+					_liftoff(sq, "")
+				elif not s.occupied:
+					_occupy_station(s)
 
 
 ## [VERMUTET] Nur noch ein Zerstörer (und keine Fighter): Schwadron bleibt zeitweise stehen.
@@ -942,6 +945,7 @@ func _liftoff(sq: SquadronData, msg: String) -> void:
 		var s: StationData = stations[sq.target_id]
 		if s.attacker == sq.id:
 			s.attacker = -1
+			_liberate_station(s)
 	sq.state = SquadronData.State.TRANSIT
 	for d in sq.destroyers:
 		d.city = -1
@@ -977,6 +981,25 @@ func _destroy_station(s: StationData) -> void:
 		log_event("Alle Stationen zerstört! Eine wird wieder aufgebaut – in ca. %d Minuten." % maxi(int(round(Config.station_rebuild_time / 60.0)), 1), Sev.WARN, "", -1, true)
 
 
+## [Vorgabe 0.14.2] Stationen sind besetzbar, aber nicht zerstörbar: Die Fighter bleiben und halten die Station besetzt
+## (kein Tanken, keine Bomben, keine Reparatur), bis der Spieler sie vernichtet.
+func _occupy_station(s: StationData) -> void:
+	s.occupied = true
+	s.integrity = 0.0
+	stats.stations_occupied = int(stats.get("stations_occupied", 0)) + 1
+	log_event("%s wurde besetzt! Fighter vernichten, um sie zu befreien." % s.name, Sev.ALERT, "station_lost", s.id)
+	changed.emit()
+
+
+## Besetzte Station ohne Angreifer (Fighter vernichtet): befreit und wieder voll einsatzbereit.
+func _liberate_station(s: StationData) -> void:
+	if not s.occupied:
+		return
+	s.occupied = false
+	s.integrity = Config.station_liberated_integrity
+	changed.emit()
+
+
 func _all_stations_destroyed() -> bool:
 	if stations.is_empty():
 		return false
@@ -995,6 +1018,11 @@ func station_rebuild_left() -> float:
 func station_rebuild_target() -> StationData:
 	if _station_rebuild_t < 0.0:
 		return null
+	return _first_destroyed_station()
+
+
+## Die zuerst zerstörte Station, unabhängig vom Zähler; null = keine zerstört.
+func _first_destroyed_station() -> StationData:
 	var best: StationData = null
 	for st in stations:
 		if st.destroyed and (best == null or st.destroyed_at < best.destroyed_at):
@@ -1008,8 +1036,10 @@ func _update_station_rebuild(dt: float) -> void:
 	_station_rebuild_t -= dt
 	if _station_rebuild_t > 0.0:
 		return
-	var best := station_rebuild_target()
+	# Der Zähler landet bei echten Bildzeiten knapp unter 0. Das Ziel deshalb ohne
+	# Zählerprüfung suchen (bis 0.14.1 lieferte station_rebuild_target() hier null).
 	_station_rebuild_t = -1.0
+	var best := _first_destroyed_station()
 	if best == null:
 		return
 	best.destroyed = false
@@ -1098,7 +1128,10 @@ func on_fighter_killed(sq: SquadronData) -> void:
 		sq.has_flagship = false
 		stats.stations_defended += 1
 		add_score(Config.bonus_station_defended, "Station verteidigt", "bonus")
-		log_event("%s erfolgreich verteidigt!" % s.name, Sev.GOOD, "", -1, true)
+		if s.occupied:
+			log_event("%s befreit – wieder einsatzbereit!" % s.name, Sev.GOOD, "", -1, true)
+		else:
+			log_event("%s erfolgreich verteidigt!" % s.name, Sev.GOOD, "", -1, true)
 	_check_squadron(sq)
 
 
@@ -1146,6 +1179,7 @@ func _check_squadron(sq: SquadronData) -> void:
 		var s: StationData = stations[sq.target_id]
 		if s.attacker == sq.id:
 			s.attacker = -1
+			_liberate_station(s)
 	sq.state = SquadronData.State.DESTROYED
 	squadrons.erase(sq)
 	if enemy_squadrons.has(sq) or enemy2_squadrons.has(sq):
