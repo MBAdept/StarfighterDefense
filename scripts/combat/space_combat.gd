@@ -6,7 +6,8 @@ extends CombatBase
 ##   SQUADRON  – Schwadron im All: erst Fighter (Wellen), dann Zerstörer nacheinander, ggf. Flaggschiff
 ##   STATION   – Raumstation: ggf. Verteidigung (nur Fighter) [ORIGINAL], danach Andocken + Tanken
 ##   EMPTY     – leerer Raum (nach Vernichtung eines Schwadrons)
-##   RECEPTION – Ankunft im Feindsystem: Empfangskomitee aus 12 aggressiven Fightern (4 Wellen), danach Ruhe
+##   RECEPTION – Ankunft in einem Feindsystem: in Vorrhal das Empfangskomitee aus 12 aggressiven Fightern (4 Wellen),
+##               danach Ruhe; im zweiten Feindsystem [0.14.0] gibt es keins
 ##  Steuerung [ORIGINAL]: links/rechts/rauf/runter, kein Rollen, keine freie Rotation.
 ## =============================================================================================
 
@@ -68,7 +69,7 @@ static func create_station(st: StationData) -> SpaceCombat:
 	return s
 
 
-## arrival_home = true: Ankunft nach dem Rücksprung aus dem Feindsystem (Sprungpunkt oben links)
+## arrival_home = true: Ankunft nach dem Rücksprung aus einem Feindsystem (an dessen Sprungpunkt in Helion)
 ## note: Hinweis bei der Ankunft (z. B. Ziel-Schwadron ist inzwischen weitergesprungen)
 static func create_empty(arrival_home := false, note := "") -> SpaceCombat:
 	var s := SpaceCombat.new()
@@ -84,7 +85,7 @@ static func create_reception() -> SpaceCombat:
 	return s
 
 
-## [Vorgabe] Stern Helion bzw. Vorrhal: Schnelltanken (GameState._update_star), Hitze steigt.
+## [Vorgabe] Stern des Systems (Helion, Vorrhal bzw. Ixmora): Schnelltanken (GameState._update_star), Hitze steigt.
 static func create_star() -> SpaceCombat:
 	var s := SpaceCombat.new()
 	s.mode = Mode.STAR
@@ -92,7 +93,12 @@ static func create_star() -> SpaceCombat:
 
 
 func in_enemy_system() -> bool:
-	return GameState.player_system == 1
+	return GameState.player_system != 0
+
+
+## Ortsname im Feindsystem: "FEINDSYSTEM VORRHAL" bzw. "FEINDSYSTEM IXMORA".
+func _enemy_place() -> String:
+	return "FEINDSYSTEM %s" % GameState.star_name().to_upper()
 
 
 func _ready() -> void:
@@ -119,7 +125,7 @@ func _ready() -> void:
 		Mode.SQUADRON:
 			location_name = squadron.name.to_upper()
 			location_sub = "Kurs auf " + GameState.squadron_target_name(squadron)
-			if squadron.system == 1:
+			if squadron.system != 0:
 				location_sub = "Feindsystem · %s" % ("wartet am Sprungpunkt" if squadron.state == SquadronData.State.WAITING else "Kurs auf den Sprungpunkt nach " + GameState.STAR_NAME)
 			_start_squadron_fight(true)
 		Mode.STATION:
@@ -132,7 +138,7 @@ func _ready() -> void:
 			else:
 				_start_docking()
 		Mode.EMPTY:
-			location_name = "TIEFRAUM" if not in_enemy_system() else "FEINDSYSTEM %s" % GameState.ENEMY_STAR_NAME.to_upper()
+			location_name = "TIEFRAUM" if not in_enemy_system() else _enemy_place()
 			location_sub = "Keine Feindkontakte"
 			if arrival_note != "":
 				hud.show_message("ZIEL VERFEHLT", arrival_note, 3.0, UITheme.AMBER)
@@ -150,12 +156,17 @@ func _ready() -> void:
 			hud.show_message("STERN " + sn, "Energie lädt fast sofort · keine Reparatur, keine Bomben · nach ~%d s verglüht das Schiff" % int(Config.star_heat_time), 3.6, UITheme.AMBER)
 			Audio.sfx("refuel_complete", -6.0, 0.7)
 		Mode.RECEPTION:
-			location_name = "FEINDSYSTEM %s" % GameState.ENEMY_STAR_NAME.to_upper()
-			orbit_total = GameState.reception_size()
+			location_name = _enemy_place()
+			# [Vorgabe 0.14.0] Empfangskomitee nur in Vorrhal
+			orbit_total = GameState.reception_size() if GameState.player_system == 1 else 0
 			if orbit_total <= 0:
 				_reception_done(false)
-				location_sub = "Sprungpunkt · kein Empfangskomitee mehr"
-				hud.show_message("FEINDSYSTEM %s" % GameState.ENEMY_STAR_NAME.to_upper(), "Der Sprungpunkt ist frei · LEERTASTE: Feindkarte", 3.0, UITheme.CYAN)
+				if GameState.player_system == 2:
+					location_sub = "Sprungpunkt · kein Empfangskomitee"
+					hud.show_message(_enemy_place(), "Kein Empfangskomitee – der Sprungpunkt ist frei · LEERTASTE: Feindkarte", 3.2, UITheme.CYAN)
+				else:
+					location_sub = "Sprungpunkt · kein Empfangskomitee mehr"
+					hud.show_message(_enemy_place(), "Der Sprungpunkt ist frei · LEERTASTE: Feindkarte", 3.0, UITheme.CYAN)
 			else:
 				location_sub = "Sprungpunkt · EMPFANGSKOMITEE!"
 				hint_text = "Erst die Fighter abwehren  ·  LEERTASTE: Karte (nur Rücksprung)"
@@ -218,9 +229,9 @@ func _build_world() -> void:
 	elif mode == Mode.ORBIT:
 		my_pos = GameState.home_planet().map_pos()
 	elif mode == Mode.RECEPTION:
-		my_pos = GameState.ENEMY_GATE
+		my_pos = GameState.system_gate(GameState.player_system)
 	if mode == Mode.STAR:
-		_build_star_world(enemy_sys)
+		_build_star_world(GameState.player_system)
 		return
 	# Richtung zur Sonne aus der Kartenposition (Karte x → Welt x, Karte y → Welt z)
 	_sun_dir = Vector3(-my_pos.x, 0.0, -my_pos.y)
@@ -234,11 +245,12 @@ func _build_world() -> void:
 	var variant_b := mode == Mode.SQUADRON and squadron != null and squadron.id % 2 == 0
 	var pano := Assets.tex("sky/space_panorama_b.png" if variant_b else "sky/space_panorama.png")
 	if enemy_sys:
-		# Feindsystem: eigener roter/violetter Himmel (sonst eingefärbte Variante)
-		pano = Assets.tex("sky/space_panorama_enemy.png")
+		# Feindsystem: eigener roter/violetter Himmel – im zweiten Feindsystem blau-violett (sonst eingefärbte Variante)
+		var second := GameState.player_system == 2
+		pano = Assets.tex("sky/space_panorama_enemy2.png" if second else "sky/space_panorama_enemy.png")
 		if pano == null:
 			pano = Assets.tex("sky/space_panorama_b.png")
-			sky.set_shader_parameter("tint", Vector3(1.3, 0.6, 0.8))
+			sky.set_shader_parameter("tint", Vector3(0.75, 0.85, 1.3) if second else Vector3(1.3, 0.6, 0.8))
 	if pano == null:
 		pano = Assets.tex("sky/space_panorama.png")
 	if pano:
@@ -248,7 +260,10 @@ func _build_world() -> void:
 	var ang := clampf(30.0 / dist_star, 0.04, 0.3)   # scheinbarer Sonnenradius (Grad)
 	sky.set_shader_parameter("sun_size", cos(deg_to_rad(ang)))
 	sky.set_shader_parameter("sun_intensity", clampf(260.0 / dist_star, 0.5, 2.5))
-	if enemy_sys:
+	if enemy_sys and GameState.player_system == 2:
+		make_environment(sky, Color(0.2, 0.24, 0.38), 0.55)
+		make_sun(_sun_dir, Color(0.74, 0.82, 1.0), clampf(1.0 + 120.0 / dist_star, 1.2, 2.4))   # blauer Stern Ixmora
+	elif enemy_sys:
 		make_environment(sky, Color(0.34, 0.2, 0.26), 0.55)
 		make_sun(_sun_dir, Color(1.0, 0.62, 0.48), clampf(1.0 + 120.0 / dist_star, 1.2, 2.4))   # roter Stern Vorrhal
 	else:
@@ -266,11 +281,13 @@ func _build_world() -> void:
 
 
 ## [Vorgabe] Stern zum Schnelltanken: riesige, ruhig wallende Sonne direkt voraus, Korona, Staub.
-func _build_star_world(enemy_sys: bool) -> void:
+## sys: 0 = Helion (gelb-weiß), 1 = Vorrhal (rot-orange), 2 = Ixmora (blau-weiß)
+func _build_star_world(sys: int) -> void:
+	var enemy_sys := sys != 0
 	_sun_dir = Vector3(0.0, 0.07, -1.0).normalized()
 	var sky := ShaderMaterial.new()
 	sky.shader = load("res://shaders/space_sky.gdshader")
-	var pano := Assets.tex("sky/space_panorama_enemy.png" if enemy_sys else "sky/space_panorama.png")
+	var pano := Assets.tex(["sky/space_panorama.png", "sky/space_panorama_enemy.png", "sky/space_panorama_enemy2.png"][clampi(sys, 0, 2)])
 	if pano == null:
 		pano = Assets.tex("sky/space_panorama.png")
 	if pano:
@@ -281,7 +298,10 @@ func _build_star_world(enemy_sys: bool) -> void:
 	sky.set_shader_parameter("sun_intensity", 0.6)
 	var core := Color(1.0, 0.5, 0.26) if enemy_sys else Color(1.0, 0.92, 0.7)
 	var limb := Color(0.75, 0.12, 0.04) if enemy_sys else Color(1.0, 0.46, 0.1)
-	make_environment(sky, Color(0.45, 0.3, 0.2), 0.7)
+	if sys == 2:
+		core = Color(0.32, 0.46, 1.0)   # blauer Stern Ixmora (kräftig gesättigt: sonst überstrahlt er weiß)
+		limb = Color(0.1, 0.14, 0.72)
+	make_environment(sky, Color(0.26, 0.3, 0.45) if sys == 2 else Color(0.45, 0.3, 0.2), 0.7)
 	make_sun(_sun_dir, core, 2.6)
 	var star := MeshInstance3D.new()
 	var sm := SphereMesh.new()
@@ -294,7 +314,7 @@ func _build_star_world(enemy_sys: bool) -> void:
 	mat.shader = load("res://shaders/star_surface.gdshader")
 	mat.set_shader_parameter("core_color", Vector3(core.r, core.g, core.b))
 	mat.set_shader_parameter("limb_color", Vector3(limb.r, limb.g, limb.b))
-	mat.set_shader_parameter("energy", 1.45 if enemy_sys else 2.0)   # Vorrhal sichtbar rot-orange statt weiß überstrahlt
+	mat.set_shader_parameter("energy", [2.0, 1.45, 1.35][clampi(sys, 0, 2)])   # Vorrhal/Ixmora sichtbar farbig statt weiß überstrahlt
 	star.material_override = mat
 	star.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(star)
@@ -362,7 +382,7 @@ func _planet_material(p: PlanetData) -> ShaderMaterial:
 	m.set_shader_parameter("has_clouds", has_clouds)
 	if clouds:
 		m.set_shader_parameter("clouds_tex", clouds)
-	var etex := Assets.tex("planets/%s_emission.png" % p.type) if p.type in ["volcanic", "alien_ash", "alien_home"] else null
+	var etex := Assets.tex("planets/%s_emission.png" % p.type) if p.type in ["volcanic", "alien_ash", "alien_home", "alien_void", "alien_magma", "alien_bloom"] else null
 	if etex:
 		m.set_shader_parameter("emission_tex", etex)
 		m.set_shader_parameter("has_emission", true)
@@ -370,7 +390,8 @@ func _planet_material(p: PlanetData) -> ShaderMaterial:
 	m.set_shader_parameter("sun_dir", _sun_dir)
 	m.set_shader_parameter("night_light_strength", 1.6 if p.is_home else 0.0)
 	if p.is_enemy:
-		m.set_shader_parameter("night_lights", Color(1.0, 0.25, 0.55))   # Lichter der Feindstädte: magenta
+		# Lichter der Feindstädte: magenta, im zweiten Feindsystem violett
+		m.set_shader_parameter("night_lights", Color(0.6, 0.42, 1.0) if p.system == 2 else Color(1.0, 0.25, 0.55))
 	m.set_shader_parameter("night_noise", Effects.noise_texture())
 	m.set_shader_parameter("spin", float(p.id) * 0.13)
 	return m
@@ -409,7 +430,7 @@ func _build_planet(p: PlanetData, radius: float, center: Vector3) -> void:
 func _build_distant_planet(my_pos: Vector2) -> void:
 	var best: PlanetData = null
 	var bd := INF
-	for p in (GameState.enemy_planets if in_enemy_system() else GameState.planets):
+	for p in GameState.system_planets(GameState.player_system):
 		var d: float = p.map_pos().distance_to(my_pos)
 		if d < bd and d > 1.0:
 			bd = d
@@ -742,7 +763,7 @@ func _on_squadron_destroyed(sq: SquadronData) -> void:
 		return   # wird in _after_station_defense behandelt
 	phase = Phase.DONE
 	hint_text = "LEERTASTE: Systemkarte"
-	location_name = "TIEFRAUM" if not in_enemy_system() else "FEINDSYSTEM %s" % GameState.ENEMY_STAR_NAME.to_upper()
+	location_name = "TIEFRAUM" if not in_enemy_system() else _enemy_place()
 	location_sub = "Schwadron vernichtet"
 	hud.show_message("SCHWADRON VERNICHTET", "+%d Bonus" % Config.bonus_squadron_destroyed, 3.5, UITheme.GREEN)
 	Audio.sfx("squadron_destroyed")

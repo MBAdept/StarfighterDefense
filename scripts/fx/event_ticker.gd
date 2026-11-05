@@ -34,8 +34,8 @@ func _on_event(text: String, sev: int) -> void:
 ## Hinweiston für Warnmeldungen aus dem System. Der Geschoss-Warnton ("incoming") bleibt echten
 ## Geschossen vorbehalten; Ereignisse am aktuellen Ort vertont die Szene selbst.
 func _on_alert(kind: String, ref: int) -> void:
-	if kind == "station_attack" or GameState.last_event_lost():
-		return   # Stationsangriff: dafür gibt es den (zeitlich begrenzten) Alarm; verlorene Meldung: kein Ton
+	if kind == "station_attack" or kind == "second_system" or GameState.last_event_lost():
+		return   # Stationsangriff / zweites Feindsystem: dafür gibt es den (zeitlich begrenzten) Alarm; verlorene Meldung: kein Ton
 	var here := false
 	match kind:
 		"landing", "city":

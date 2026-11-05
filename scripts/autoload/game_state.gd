@@ -25,9 +25,11 @@ signal enemy_squadron_launched(sq: SquadronData, planet: PlanetData)
 signal defenders_changed(planet: PlanetData)
 signal bombs_changed(value: int)
 signal damage_changed(kind: String)   ## Systemschaden aufgetreten ("" = repariert)
+signal second_system_awakened         ## [0.14.0] das zweite Feindsystem greift an (Hart/Experte)
 
-## ENEMY_SYSTEM = Ankunftspunkt im Feindsystem (Empfangskomitee), ENEMY_PLANET = Feindplanet,
-## HOME_SYSTEM = Sprungziel "zurück ins Helion-System" (nur als Sprungziel auf der Feindkarte)
+## ENEMY_SYSTEM = Ankunftspunkt in einem Feindsystem (id = System 1/2; Empfangskomitee nur in Vorrhal),
+## ENEMY_PLANET = Feindplanet (id = Index im System des Spielers),
+## HOME_SYSTEM = Sprungziel "zurück ins Helion-System" (nur als Sprungziel auf einer Feindkarte)
 enum Loc { NONE, HOME_ORBIT, PLANET, STATION, SQUADRON, SPACE, ENEMY_SYSTEM, ENEMY_PLANET, HOME_SYSTEM, STAR }
 enum Sev { INFO, GOOD, WARN, ALERT }
 
@@ -49,6 +51,21 @@ const ENEMY_PLANET_DEFS := [
 const ENEMY_CITY_NAMES := ["Kh'tor", "Ulmaz", "Varkesh", "Druun", "Ssarak", "Ix-Thul", "Morgra", "Kezzar",
 	"Tholl", "Vyrr", "Ashkar", "Gruvak", "Zeth", "Oruun", "Kavrax", "Yllith", "Nazzur", "Thraak", "Quorth",
 	"Ixxa", "Brakk", "Selvoth", "Gorrun", "Vashti"]
+
+## [Vorgabe 0.14.0] Zweites Feindsystem (Hart/Experte): nur 4 Planeten, kein Empfangskomitee, nur über Helion erreichbar.
+## Blauer Stern; der Sprungpunkt liegt in Helion unten rechts (gegenüber Vorrhal), dort oben links (Richtung Helion).
+const ENEMY2_STAR_NAME := "Ixmora"
+const JUMP_POINT_2 := Vector2(712, 372)     ## [FREI] Sprungpunkt in Helion zum zweiten Feindsystem: unten rechts
+const ENEMY2_GATE := Vector2(-712, -372)    ## [FREI] Sprungpunkt im zweiten Feindsystem zurück nach Helion: oben links
+const ENEMY2_PLANET_DEFS := [
+	{"name": "Thurxa", "type": "alien_void", "radius": 168.0, "home": true},
+	{"name": "Ilvesh", "type": "alien_glacier", "radius": 248.0},
+	{"name": "Gorrakh", "type": "alien_magma", "radius": 326.0},
+	{"name": "Seyth", "type": "alien_bloom", "radius": 402.0},
+]
+const ENEMY2_CITY_NAMES := ["Vhaal", "Krosk", "Ezzith", "Tarnuk", "Qelleth", "Rhazz", "Umbrak", "Syrrin",
+	"Otheka", "Xiluth", "Grennak", "Phyrr", "Duzzar", "Ykkora", "Hessim", "Vrotha", "Zannik", "Moloq",
+	"Tsevra", "Baarok", "Nythe", "Ruzzik", "Ilkath", "Fennox"]
 
 ## [FREI] Planeten (Vorschlag 6–8). Bei planet_count < 8 entfallen die äußeren (Heimat bleibt).
 const PLANET_DEFS := [
@@ -86,9 +103,18 @@ var warned_energy_stage := 0    ## zuletzt gewarnte Energie-Warnstufe (damit Spr
 var planets: Array = []         ## PlanetData (Helion)
 var stations: Array = []        ## StationData
 var squadrons: Array = []       ## SquadronData im Helion-System
-var enemy_planets: Array = []   ## PlanetData (Feindsystem, is_enemy = true)
-var enemy_squadrons: Array = [] ## SquadronData im Feindsystem (auf dem Weg zum Sprungpunkt)
-var player_system := 0          ## 0 = Helion-System, 1 = Feindsystem
+var enemy_planets: Array = []   ## PlanetData (Feindsystem Vorrhal, is_enemy = true)
+var enemy_squadrons: Array = [] ## SquadronData in Vorrhal (auf dem Weg zum Sprungpunkt)
+var enemy2_planets: Array = []  ## [0.14.0] PlanetData des zweiten Feindsystems (nur Hart/Experte)
+var enemy2_squadrons: Array = []   ## [0.14.0] SquadronData im zweiten Feindsystem
+var second_active := false      ## [0.14.0] das zweite Feindsystem greift an (erst dann sichtbar und erreichbar)
+var second_awake_time := -1.0   ## Strategiezeit des Erwachens (Auswertung)
+var second_reason := ""         ## "production" (Vorrhal baut nichts mehr) | "empty" (Helion 60 s frei, Experte)
+var production2_progress := 0.0 ## wie production_progress, für das zweite Feindsystem
+var _production2_stop_logged := false
+var _helion_empty_t := 0.0      ## Experte: Strategiezeit ohne feindliches Schwadron in Helion (am Stück)
+var second_banner_pending := "" ## Banner zum Angriff, nachzuholen (Karte offen / Hyperraumsprung); "" = keins
+var player_system := 0          ## 0 = Helion-System, 1 = Feindsystem Vorrhal, 2 = zweites Feindsystem
 var bombs := 15
 var reception_active := false   ## Empfangskomitee am Ankunftspunkt noch nicht abgewehrt
 var reception_left := 0         ## [Vorgabe] Fighter des (einzigen) Empfangskomitees, die noch leben (Config.reception_once)
@@ -143,6 +169,15 @@ func new_game() -> void:
 	stations.clear()
 	enemy_planets.clear()
 	enemy_squadrons.clear()
+	enemy2_planets.clear()
+	enemy2_squadrons.clear()
+	second_active = false
+	second_awake_time = -1.0
+	second_reason = ""
+	production2_progress = 0.0
+	_production2_stop_logged = false
+	_helion_empty_t = 0.0
+	second_banner_pending = ""
 	player_system = 0
 	bombs = Config.bombs_max
 	reception_active = false
@@ -165,7 +200,7 @@ func new_game() -> void:
 		"planets_saved": 0, "stations_defended": 0, "jumps": 0, "energy_refueled": 0.0,
 		"enemy_cities": 0, "bombs_dropped": 0, "bombs_hit": 0, "enemy_jumps": 0, "receptions": 0,
 		"enemy_squadrons_intercepted": 0, "star_visits": 0, "star_energy": 0.0,
-		"damages": 0, "repairs": 0, "damage_kinds": {},
+		"damages": 0, "repairs": 0, "damage_kinds": {}, "enemy2_cities": 0,
 		"points": {"fighters": 0, "destroyers": 0, "flagships": 0, "enemy_cities": 0, "bonus": 0}}
 	_create_planets()
 	_create_stations()
@@ -240,12 +275,19 @@ func _layout_cities(p: PlanetData, n: int, name_pool: Array = CITY_NAMES) -> voi
 			min_dist *= 0.9
 
 
-## [FREI] Feindsystem: Heimatwelt (12 Städte) innen, 4 äußere Planeten (6–8 Städte); feste Verteidiger je Planet.
+## [FREI] Feindsystem Vorrhal: Heimatwelt innen, 4 äußere Planeten; feste Verteidiger je Planet (Städte je Stufe).
+## [Vorgabe 0.14.0] Auf Hart/Experte zusätzlich das zweite Feindsystem (4 Planeten) – es ruht, bis es erwacht.
 func _create_enemy_planets() -> void:
-	var r_in: float = ENEMY_PLANET_DEFS[0].radius
-	var r_out: float = ENEMY_PLANET_DEFS[-1].radius
-	for i in ENEMY_PLANET_DEFS.size():
-		var d: Dictionary = ENEMY_PLANET_DEFS[i]
+	_create_enemy_system(1, ENEMY_PLANET_DEFS, ENEMY_CITY_NAMES, enemy_planets)
+	if Config.enemy_system_enabled and Config.second_system_mode > 0:
+		_create_enemy_system(2, ENEMY2_PLANET_DEFS, ENEMY2_CITY_NAMES, enemy2_planets)
+
+
+func _create_enemy_system(sys: int, defs: Array, city_names: Array, out: Array) -> void:
+	var r_in: float = defs[0].radius
+	var r_out: float = defs[-1].radius
+	for i in defs.size():
+		var d: Dictionary = defs[i]
 		var p := PlanetData.new()
 		p.id = i
 		p.name = d.name
@@ -253,16 +295,22 @@ func _create_enemy_planets() -> void:
 		p.orbit_radius = d.radius
 		p.is_home = d.get("home", false)
 		p.is_enemy = true
+		p.system = sys
 		p.angle = rng.randf() * TAU
 		var t := (p.orbit_radius - r_in) / maxf(r_out - r_in, 1.0)
-		p.angular_speed = -TAU / lerpf(Config.orbit_period_inner, Config.orbit_period_outer, t)   # Gegenlauf zu Helion
+		var dir := -1.0 if sys == 1 else 1.0   # Vorrhal im Gegenlauf zu Helion, das zweite System wieder rechtsherum
+		p.angular_speed = dir * TAU / lerpf(Config.orbit_period_inner, Config.orbit_period_outer, t)
 		p.seed = rng.randi()
 		p.area_radius = Config.planet_area_radius * maxf(Config.enemy_planet_area_factor, 0.5)
-		var n := Config.enemy_home_city_count if p.is_home else rng.randi_range(Config.enemy_city_count_min, Config.enemy_city_count_max)
-		_layout_cities(p, n, ENEMY_CITY_NAMES)
+		var n := 0
+		if sys == 2:
+			n = Config.second_home_city_count if p.is_home else rng.randi_range(Config.second_city_count_min, maxi(Config.second_city_count_min, Config.second_city_count_max))
+		else:
+			n = Config.enemy_home_city_count if p.is_home else rng.randi_range(Config.enemy_city_count_min, Config.enemy_city_count_max)
+		_layout_cities(p, n, city_names)
 		p.defenders = Config.enemy_home_defenders if p.is_home else rng.randi_range(Config.enemy_defenders_min, Config.enemy_defenders_max)
 		p.defenders_initial = p.defenders
-		enemy_planets.append(p)
+		out.append(p)
 
 
 func _create_stations() -> void:
@@ -312,7 +360,7 @@ func _process(delta: float) -> void:
 	for s in stations:
 		if not s.destroyed:
 			s.angle = wrapf(s.angle + s.angular_speed * dt, 0.0, TAU)
-	for ep in enemy_planets:
+	for ep in enemy_planets + enemy2_planets:
 		ep.angle = wrapf(ep.angle + ep.angular_speed * dt, 0.0, TAU)
 	_update_star(delta)   # Stern in Echtzeit (wie das Tanken an Stationen), unabhängig von time_scale (F7)
 	if game_over:
@@ -320,8 +368,10 @@ func _process(delta: float) -> void:
 	_update_spawning(dt)
 	for sq in squadrons.duplicate():
 		_update_squadron(sq, dt)
-	for esq in enemy_squadrons.duplicate():
+	for esq in enemy_squadrons + enemy2_squadrons:
 		_update_enemy_squadron(esq, dt)
+	_update_transfers()
+	_update_second_system(dt)
 	_update_player_map_pos()
 	_changed_accum += dt
 	if _changed_accum > 0.2:
@@ -339,20 +389,49 @@ func _update_spawning(dt: float) -> void:
 			_spawn_squadron(level, 0.0)
 			spawn_timer = current_spawn_interval()
 		return
-	# Feindsystem: Produktion auf den äußeren Planeten mit intakten Städten
-	if not enemy_production_active():
-		if not _production_stop_logged:
-			_production_stop_logged = true
-			log_event("Die feindliche Produktion ist zum Erliegen gekommen – keine neuen Schwadrone mehr!", Sev.GOOD, "", -1, true)
+	# Feindsysteme: Produktion auf den äußeren Planeten mit intakten Städten (das zweite erst nach dem Erwachen)
+	_update_production(1, dt)
+	if second_active:
+		_update_production(2, dt)
+
+
+func _update_production(sys: int, dt: float) -> void:
+	if not enemy_production_active(sys):
+		_log_production_stop(sys)
 		return
-	if enemy_squadrons.size() >= Config.enemy_system_max_squadrons:
+	if system_squadrons(sys).size() >= Config.enemy_system_max_squadrons:
 		return
-	production_progress += dt / maxf(current_production_interval(), 1.0)
-	if production_progress >= 1.0:
-		production_progress = 0.0
-		var p := _pick_production_planet()
+	var prog := _production(sys) + dt / maxf(current_production_interval(sys), 1.0)
+	if prog >= 1.0:
+		prog = 0.0
+		var p := _pick_production_planet(sys)
 		if p:
 			_launch_enemy_squadron(p, level)
+	_set_production(sys, prog)
+
+
+func _production(sys: int) -> float:
+	return production2_progress if sys == 2 else production_progress
+
+
+func _set_production(sys: int, v: float) -> void:
+	if sys == 2:
+		production2_progress = v
+	else:
+		production_progress = v
+
+
+func _log_production_stop(sys: int) -> void:
+	if (_production2_stop_logged if sys == 2 else _production_stop_logged):
+		return
+	if sys == 2:
+		_production2_stop_logged = true
+	else:
+		_production_stop_logged = true
+	var txt := "Die feindliche Produktion ist zum Erliegen gekommen – keine neuen Schwadrone mehr!"
+	if not enemy2_planets.is_empty():
+		txt = "Die Produktion im %s-System ist zum Erliegen gekommen – von dort kommen keine Schwadrone mehr!" % star_name(sys)
+	log_event(txt, Sev.GOOD, "", -1, true)
 
 
 func current_spawn_interval() -> float:
@@ -360,47 +439,47 @@ func current_spawn_interval() -> float:
 	return base / pow(Config.difficulty_scale, 0.7)
 
 
-## Abstand zweier Schwadron-Starts im Feindsystem: Grundtakt × (1 + Verlangsamung × zerstörte äußere Städte), die Zahl der
-## zerstörten Städte auf enemy_production_ref_cities bezogen – bei 28 äußeren Städten wie bis 0.12.0 (+15 % je Stadt).
-func current_production_interval() -> float:
-	var oc := outer_enemy_cities()
+## Abstand zweier Schwadron-Starts in einem Feindsystem: Grundtakt × (1 + Verlangsamung × zerstörte äußere Städte), die Zahl
+## der zerstörten Städte auf enemy_production_ref_cities bezogen – bei 28 äußeren Städten wie bis 0.12.0 (+15 % je Stadt).
+func current_production_interval(sys := 1) -> float:
+	var oc := outer_enemy_cities(sys)
 	var destroyed := float(oc.y - oc.x) * float(Config.enemy_production_ref_cities) / maxf(float(oc.y), 1.0)
 	return current_spawn_interval() * (1.0 + Config.enemy_production_slowdown * destroyed)
 
 
-## Städte der äußeren Feindplaneten: x = intakt, y = gesamt.
-func outer_enemy_cities() -> Vector2i:
+## Städte der äußeren Planeten eines Feindsystems (1 = Vorrhal, 2 = zweites): x = intakt, y = gesamt.
+func outer_enemy_cities(sys := 1) -> Vector2i:
 	var alive := 0
 	var total := 0
-	for p in enemy_planets:
+	for p in system_planets(sys):
 		if not p.is_home:
 			alive += p.alive_cities()
 			total += p.cities.size()
 	return Vector2i(alive, total)
 
 
-func enemy_production_active() -> bool:
-	return Config.enemy_system_enabled and outer_enemy_cities().x > 0
+func enemy_production_active(sys := 1) -> bool:
+	return Config.enemy_system_enabled and is_system_active(sys) and outer_enemy_cities(sys).x > 0
 
 
 ## Relative Produktionsrate (1.0 = volle Produktion, 0 = gestoppt) – für die Anzeige.
-func enemy_production_rate() -> float:
-	if not enemy_production_active():
+func enemy_production_rate(sys := 1) -> float:
+	if not enemy_production_active(sys):
 		return 0.0
-	return current_spawn_interval() / maxf(current_production_interval(), 0.001)
+	return current_spawn_interval() / maxf(current_production_interval(sys), 0.001)
 
 
-## Restzeit bis zum nächsten Start im Feindsystem (s); -1 = kein Start (gestoppt oder Höchstzahl erreicht).
-func next_launch_eta() -> float:
-	if not enemy_production_active() or enemy_squadrons.size() >= Config.enemy_system_max_squadrons:
+## Restzeit bis zum nächsten Start in einem Feindsystem (s); -1 = kein Start (gestoppt oder Höchstzahl erreicht).
+func next_launch_eta(sys := 1) -> float:
+	if not enemy_production_active(sys) or system_squadrons(sys).size() >= Config.enemy_system_max_squadrons:
 		return -1.0
-	return (1.0 - production_progress) * current_production_interval()
+	return (1.0 - _production(sys)) * current_production_interval(sys)
 
 
-func _pick_production_planet() -> PlanetData:
+func _pick_production_planet(sys := 1) -> PlanetData:
 	var cands := []
 	var total := 0.0
-	for p in enemy_planets:
+	for p in system_planets(sys):
 		if not p.is_home and p.alive_cities() > 0:
 			cands.append(p)
 			total += float(p.alive_cities())
@@ -416,16 +495,18 @@ func _pick_production_planet() -> PlanetData:
 
 ## [FREI] Ein Schwadron startet sichtbar von einem Feindplaneten und fliegt zum Sprungpunkt nach Helion.
 func _launch_enemy_squadron(p: PlanetData, lvl: int, start_progress := 0.0) -> SquadronData:
+	var sys := maxi(p.system, 1)
 	var sq := _make_squadron(lvl)
-	sq.system = 1
+	sq.system = sys
+	sq.from_system = sys
 	sq.origin = p.name
 	sq.map_pos = p.map_pos()
 	sq.target_kind = SquadronData.TargetKind.GATE
 	sq.target_id = 0
 	if start_progress > 0.0:
-		sq.map_pos = sq.map_pos.lerp(ENEMY_GATE, start_progress)
-	enemy_squadrons.append(sq)
-	log_event("Feindsystem: %s startet von %s." % [sq.name, p.name], Sev.INFO)
+		sq.map_pos = sq.map_pos.lerp(system_gate(sys), start_progress)
+	system_squadrons(sys).append(sq)
+	log_event("%s: %s startet von %s." % ["Feindsystem" if enemy2_planets.is_empty() else star_name(sys), sq.name, p.name], Sev.INFO)
 	enemy_squadron_launched.emit(sq, p)
 	return sq
 
@@ -433,38 +514,162 @@ func _launch_enemy_squadron(p: PlanetData, lvl: int, start_progress := 0.0) -> S
 func _update_enemy_squadron(sq: SquadronData, dt: float) -> void:
 	if is_player_at_squadron(sq):
 		return   # im Kampf mit dem Spieler: Schwadron hält an
-	match sq.state:
-		SquadronData.State.TRANSIT:
-			var to := ENEMY_GATE - sq.map_pos
-			var dist := to.length()
-			var step := enemy_squadron_speed(sq) * dt
-			if dist <= maxf(step, Config.squadron_arrival_radius):
-				sq.map_pos = ENEMY_GATE
-				sq.state = SquadronData.State.WAITING
-				_try_transfer(sq)
-			else:
-				sq.map_pos += to / dist * step
-		SquadronData.State.WAITING:
-			_try_transfer(sq)
+	if sq.state == SquadronData.State.TRANSIT:
+		var gate := system_gate(sq.system)
+		var to := gate - sq.map_pos
+		var dist := to.length()
+		var step := enemy_squadron_speed(sq) * dt
+		if dist <= maxf(step, Config.squadron_arrival_radius):
+			sq.map_pos = gate
+			sq.state = SquadronData.State.WAITING   # springt in _update_transfers, sobald in Helion Platz ist
+			sq.wait_since = sim_time
+		else:
+			sq.map_pos += to / dist * step
 
 
 func enemy_squadron_speed(sq: SquadronData) -> float:
 	return _base_speed(sq) * Config.enemy_transit_speed_factor
 
 
-## Schwadron am Sprungpunkt des Feindsystems springt ins Helion-System (sonst wartet es, bis dort Platz ist).
-func _try_transfer(sq: SquadronData) -> void:
+## [Vorgabe 0.14.0] Beide Feindsysteme teilen sich die Grenze max_squadrons in Helion: Schwadrone an den Sprungpunkten
+## springen in der Reihenfolge ihrer Ankunft, sobald dort Platz ist – egal aus welchem System (im Kampf mit dem
+## Spieler warten sie).
+func _update_transfers() -> void:
 	if squadrons.size() >= Config.max_squadrons:
 		return
-	enemy_squadrons.erase(sq)
+	var waiting := []
+	for esq in enemy_squadrons + enemy2_squadrons:
+		if esq.state == SquadronData.State.WAITING and not is_player_at_squadron(esq):
+			waiting.append(esq)
+	if waiting.is_empty():
+		return
+	# nach Ankunft sortiert nur mit zwei Feindsystemen – mit einem (Stufen bis Fortgeschritten) unverändert wie bis
+	# 0.13.0 in der Reihenfolge der Starts
+	if not enemy2_planets.is_empty():
+		waiting.sort_custom(func(a, b): return a.wait_since < b.wait_since or (a.wait_since == b.wait_since and a.id < b.id))
+	for esq in waiting:
+		if squadrons.size() >= Config.max_squadrons:
+			break
+		_transfer(esq)
+
+
+## Schwadron am Sprungpunkt eines Feindsystems springt ins Helion-System (Ankunft am Sprungpunkt dieses Systems).
+func _transfer(sq: SquadronData) -> void:
+	system_squadrons(sq.system).erase(sq)
 	sq.system = 0
 	sq.state = SquadronData.State.TRANSIT
-	sq.map_pos = JUMP_POINT
+	sq.map_pos = helion_gate(sq.from_system)
 	sq.stop_clock = 0.0
+	sq.wait_since = -1.0
 	_choose_target(sq)
 	squadrons.append(sq)
-	log_event("Neues feindliches Schwadron aus dem Feindsystem! Ziel: %s" % squadron_target_name(sq), Sev.WARN)
+	log_event("Neues feindliches Schwadron aus dem %s! Ziel: %s" % [_from_text(sq.from_system), squadron_target_name(sq)], Sev.WARN)
 	squadron_spawned.emit(sq)
+
+
+## Herkunft für Meldungen: "Feindsystem" (nur Vorrhal) bzw. "Vorrhal-System" / "Ixmora-System".
+func _from_text(sys: int) -> String:
+	return "Feindsystem" if enemy2_planets.is_empty() else "%s-System" % star_name(maxi(sys, 1))
+
+
+# =============================================================================================
+#  Zweites Feindsystem [Vorgabe 0.14.0]
+# =============================================================================================
+## Hart: das zweite Feindsystem greift an, sobald Vorrhal keine Schwadrone mehr bauen kann. Experte: zusätzlich schon,
+## wenn in Helion erstmals Config.second_system_empty_time Sekunden am Stück kein feindliches Schwadron ist (was zuerst
+## eintritt). dt = 0: nur die Produktionsbedingung prüfen (direkt nach einer zerstörten Feindstadt).
+func _update_second_system(dt: float) -> void:
+	if second_active or enemy2_planets.is_empty() or not running or game_over:
+		return
+	if not enemy_production_active(1):
+		_awaken_second("production")
+		return
+	if Config.second_system_mode >= 2:
+		_helion_empty_t = _helion_empty_t + dt if squadrons.is_empty() else 0.0
+		if _helion_empty_t >= Config.second_system_empty_time:
+			_awaken_second("empty")
+
+
+func _awaken_second(reason: String) -> void:
+	second_active = true
+	second_awake_time = sim_time
+	second_reason = reason
+	_helion_empty_t = 0.0
+	# erster Start nach second_first_launch Sekunden, danach im Takt current_production_interval(2)
+	production2_progress = clampf(1.0 - Config.second_first_launch / maxf(current_production_interval(2), 1.0), 0.0, 0.99)
+	if reason == "production":
+		_log_production_stop(1)
+	log_event("ALARM: Ein zweites Feindsystem greift an – %s! Sprungpunkt in Helion unten rechts." % ENEMY2_STAR_NAME, Sev.ALERT, "second_system", 2)
+	second_system_awakened.emit()
+	changed.emit()
+
+
+## Testhilfe: zweites Feindsystem anlegen (falls die Stufe keins hat) und angreifen lassen.
+func debug_awaken_second() -> void:
+	if not Config.enemy_system_enabled or game_over:
+		return
+	if enemy2_planets.is_empty():
+		_create_enemy_system(2, ENEMY2_PLANET_DEFS, ENEMY2_CITY_NAMES, enemy2_planets)
+	if not running:
+		start_campaign()
+	if not second_active:
+		_awaken_second("test")
+
+
+## Sekunden ohne Schwadron in Helion (Experte-Auslöser), für die Anzeige; -1 = kein solcher Auslöser.
+func helion_empty_time() -> float:
+	if second_active or enemy2_planets.is_empty() or Config.second_system_mode < 2:
+		return -1.0
+	return _helion_empty_t
+
+
+func is_system_active(sys: int) -> bool:
+	match sys:
+		0:
+			return true
+		1:
+			return Config.enemy_system_enabled
+		2:
+			return Config.enemy_system_enabled and second_active
+	return false
+
+
+## Aktive Feindsysteme (1 = Vorrhal, 2 = zweites Feindsystem, sobald es angreift).
+func enemy_systems() -> Array:
+	var out := []
+	if Config.enemy_system_enabled:
+		out.append(1)
+		if second_active:
+			out.append(2)
+	return out
+
+
+func system_planets(sys: int) -> Array:
+	match sys:
+		1:
+			return enemy_planets
+		2:
+			return enemy2_planets
+	return planets
+
+
+func system_squadrons(sys: int) -> Array:
+	match sys:
+		1:
+			return enemy_squadrons
+		2:
+			return enemy2_squadrons
+	return squadrons
+
+
+## Sprungpunkt im Feindsystem sys zurück nach Helion (dort kommen Spieler an, dorthin fliegen startende Schwadrone).
+func system_gate(sys: int) -> Vector2:
+	return ENEMY2_GATE if sys == 2 else ENEMY_GATE
+
+
+## Sprungpunkt in Helion zum Feindsystem sys (Ankunft der Schwadrone aus sys und des Spielers beim Rücksprung).
+func helion_gate(sys: int) -> Vector2:
+	return JUMP_POINT_2 if sys == 2 else JUMP_POINT
 
 
 func _update_squadron(sq: SquadronData, dt: float) -> void:
@@ -532,12 +737,12 @@ func _base_speed(sq: SquadronData) -> float:
 	var f := float(sq.fighters) / maxf(Config.squadron_fighter_factor, 0.01)
 	var strength := f + 4.0 * sq.destroyers.size() + (2.0 if sq.has_flagship else 0.0)
 	var t := clampf(strength / Config.squadron_strength_ref, 0.0, 1.0)
-	return lerpf(Config.squadron_speed_min, Config.squadron_speed_max, t) * sqrt(Config.difficulty_scale)
+	return lerpf(Config.squadron_speed_min, Config.squadron_speed_max, t) * sqrt(Config.difficulty_scale) * Config.squadron_speed_factor
 
 
 func squadron_target_pos(sq: SquadronData) -> Vector2:
 	if sq.target_kind == SquadronData.TargetKind.GATE:
-		return ENEMY_GATE
+		return system_gate(sq.system)
 	if sq.target_kind == SquadronData.TargetKind.PLANET:
 		return planets[sq.target_id].map_pos()
 	return stations[sq.target_id].map_pos()
@@ -554,7 +759,7 @@ func squadron_target_name(sq: SquadronData) -> String:
 func squadron_eta(sq: SquadronData) -> float:
 	if sq.state != SquadronData.State.TRANSIT:
 		return 0.0
-	var spd := enemy_squadron_speed(sq) if sq.system == 1 else squadron_speed(sq)
+	var spd := enemy_squadron_speed(sq) if sq.system != 0 else squadron_speed(sq)
 	return sq.map_pos.distance_to(squadron_target_pos(sq)) / maxf(spd, 0.01)
 
 
@@ -760,15 +965,16 @@ func _destroy_station(s: StationData) -> void:
 
 
 ## Schwadron direkt im Helion-System am Sprungpunkt (Kampagnenstart, Testfunktionen, ohne Feindsystem).
-func _spawn_squadron(lvl: int, start_progress: float) -> SquadronData:
+func _spawn_squadron(lvl: int, start_progress: float, from := 1) -> SquadronData:
 	var sq := _make_squadron(lvl)
-	sq.map_pos = JUMP_POINT
+	sq.from_system = from
+	sq.map_pos = helion_gate(from)
 	_choose_target(sq)
 	if start_progress > 0.0:
 		var tp := squadron_target_pos(sq)
 		sq.map_pos = sq.map_pos.lerp(tp, start_progress)
 	squadrons.append(sq)
-	log_event("Neues feindliches Schwadron aus dem Feindsystem! Ziel: %s" % squadron_target_name(sq), Sev.WARN)
+	log_event("Neues feindliches Schwadron aus dem %s! Ziel: %s" % [_from_text(from), squadron_target_name(sq)], Sev.WARN)
 	squadron_spawned.emit(sq)
 	return sq
 
@@ -886,8 +1092,9 @@ func _check_squadron(sq: SquadronData) -> void:
 			s.attacker = -1
 	sq.state = SquadronData.State.DESTROYED
 	squadrons.erase(sq)
-	if enemy_squadrons.has(sq):
+	if enemy_squadrons.has(sq) or enemy2_squadrons.has(sq):
 		enemy_squadrons.erase(sq)
+		enemy2_squadrons.erase(sq)
 		stats.enemy_squadrons_intercepted += 1
 	stats.squadrons += 1
 	add_score(Config.bonus_squadron_destroyed, "Schwadron vernichtet", "bonus")
@@ -929,7 +1136,8 @@ func trigger_game_over(reason: String) -> void:
 	_end_game("gameover", reason)
 
 
-## Sieg: alle Städte im Feindsystem zerstört (Config.victory_all_enemy_cities, sonst nur die Heimatwelt).
+## Sieg: alle Städte in den Feindsystemen zerstört (Config.victory_all_enemy_cities, sonst nur die Heimatwelten) –
+## auf Hart/Experte auch im zweiten Feindsystem.
 func trigger_victory() -> void:
 	if game_over:
 		return
@@ -942,9 +1150,24 @@ func trigger_victory() -> void:
 
 func victory_text() -> String:
 	if Config.victory_all_enemy_cities:
-		return "SIEG! Alle Städte im %s-System sind zerstört." % ENEMY_STAR_NAME
-	var home := enemy_home()
-	return "SIEG! Die feindliche Heimatwelt %s ist gefallen." % (home.name if home else "")
+		return "SIEG! Alle Städte %s sind zerstört." % victory_systems_text()
+	return "SIEG! %s gefallen." % victory_homes_text()
+
+
+## "im Vorrhal-System" bzw. (Hart/Experte) "in den Systemen Vorrhal und Ixmora".
+func victory_systems_text() -> String:
+	if enemy2_planets.is_empty():
+		return "im %s-System" % ENEMY_STAR_NAME
+	return "in den Systemen %s und %s" % [ENEMY_STAR_NAME, ENEMY2_STAR_NAME]
+
+
+## "Die feindliche Heimatwelt Xhal ist" bzw. "Die feindlichen Heimatwelten Xhal und Thurxa sind".
+func victory_homes_text() -> String:
+	var h1 := enemy_home(1)
+	var h2 := enemy_home(2)
+	if h2 == null:
+		return "Die feindliche Heimatwelt %s ist" % (h1.name if h1 else "")
+	return "Die feindlichen Heimatwelten %s und %s sind" % [h1.name if h1 else "", h2.name]
 
 
 ## Vorzeitiger Abbruch (Pausemenü) – führt ebenfalls zur Auswertung.
@@ -983,6 +1206,8 @@ func _log_evaluation() -> void:
 		"punkte_boni": pts.get("bonus", 0),
 		"sternbesuche": stats.get("star_visits", 0), "systemschaeden": stats.get("damages", 0),
 		"reparaturen": stats.get("repairs", 0),
+		"zweites_system_s": int(second_awake_time) if second_active else -1, "zweites_system_grund": second_reason,
+		"feindstaedte_system2": stats.get("enemy2_cities", 0),
 	}
 	var parts := []
 	for k in row:
@@ -1035,37 +1260,43 @@ func total_cities() -> int:
 
 
 func squadron_by_id(id: int) -> SquadronData:
-	for sq in squadrons:
-		if sq.id == id:
-			return sq
-	for sq in enemy_squadrons:
-		if sq.id == id:
-			return sq
+	for list in [squadrons, enemy_squadrons, enemy2_squadrons]:
+		for sq in list:
+			if sq.id == id:
+				return sq
 	return null
 
 
 ## Schwadrone des Systems, in dem sich der Spieler befindet.
 func local_squadrons() -> Array:
-	return enemy_squadrons if player_system == 1 else squadrons
+	return system_squadrons(player_system)
 
 
-func enemy_home() -> PlanetData:
-	for p in enemy_planets:
+## Heimatwelt eines Feindsystems (1 = Vorrhal, 2 = zweites Feindsystem; null, wenn es das System nicht gibt).
+func enemy_home(sys := 1) -> PlanetData:
+	var list := enemy2_planets if sys == 2 else enemy_planets
+	for p in list:
 		if p.is_home:
 			return p
-	return enemy_planets[0] if not enemy_planets.is_empty() else null
+	return list[0] if not list.is_empty() else null
 
 
-func enemy_cities_alive() -> int:
+## Planeten der Feindsysteme: sys = 1 oder 2, 0 = alle (das zweite gibt es nur auf Hart/Experte – es zählt auch,
+## solange es noch ruht: der Sieg verlangt dort ebenfalls alle Städte).
+func _enemy_planets_of(sys: int) -> Array:
+	return enemy_planets + enemy2_planets if sys <= 0 else system_planets(sys)
+
+
+func enemy_cities_alive(sys := 0) -> int:
 	var n := 0
-	for p in enemy_planets:
+	for p in _enemy_planets_of(sys):
 		n += p.alive_cities()
 	return n
 
 
-func enemy_cities_total() -> int:
+func enemy_cities_total(sys := 0) -> int:
 	var n := 0
-	for p in enemy_planets:
+	for p in _enemy_planets_of(sys):
 		n += p.cities.size()
 	return n
 
@@ -1076,27 +1307,35 @@ func destroy_enemy_city(p: PlanetData, idx: int) -> void:
 		return
 	p.cities[idx] = false
 	stats.enemy_cities += 1
+	if p.system == 2:
+		stats.enemy2_cities = int(stats.get("enemy2_cities", 0)) + 1
 	stats.bombs_hit += 1
 	add_score(Config.enemy_city_points, "Feindstadt", "enemy_cities")
 	log_event("%s: Feindstadt %s zerstört! (%d übrig)" % [p.name, p.city_names[idx], p.alive_cities()], Sev.GOOD, "", -1, true)
 	enemy_city_destroyed.emit(p, idx)
 	if victory_cities_left() == 0:
 		trigger_victory()
-	elif p.alive_cities() == 0:
+		return
+	if p.alive_cities() == 0:
 		if p.is_home:
-			var n := enemy_cities_alive()
+			var n := enemy_cities_alive(maxi(p.system, 1))
 			log_event("Heimatwelt %s ausgeschaltet! Noch %d %s im System." % [p.name, n, "Feindstadt" if n == 1 else "Feindstädte"], Sev.GOOD, "", -1, true)
 		else:
 			log_event("%s ist ausgeschaltet – von dort starten keine Schwadrone mehr." % p.name, Sev.GOOD, "", -1, true)
+	_update_second_system(0.0)   # Hart/Experte: kann Vorrhal nichts mehr bauen, greift jetzt das zweite System an
 
 
-## Bis zum Sieg verbleibende Feindstädte: [Vorgabe] alle im Feindsystem (bzw. nur die Heimatwelt, wenn
-## Config.victory_all_enemy_cities = false).
+## Bis zum Sieg verbleibende Feindstädte: [Vorgabe] alle in den Feindsystemen – auf Hart/Experte auch im zweiten,
+## selbst solange es noch ruht (bzw. nur die Heimatwelten, wenn Config.victory_all_enemy_cities = false).
 func victory_cities_left() -> int:
 	if Config.victory_all_enemy_cities:
 		return enemy_cities_alive()
-	var home := enemy_home()
-	return home.alive_cities() if home else 0
+	var n := 0
+	for sys in [1, 2]:
+		var home := enemy_home(sys)
+		if home:
+			n += home.alive_cities()
+	return n
 
 
 ## Ein Verteidiger eines Feindplaneten wurde abgeschossen (keine Regeneration).
@@ -1142,14 +1381,15 @@ func is_player_at_enemy_planet(pid: int) -> bool:
 	return player_loc == Loc.ENEMY_PLANET and player_loc_id == pid
 
 
-## Ankunft im Feindsystem (Sprungpunkt unten rechts). [Vorgabe] Es gibt nur EIN Empfangskomitee: Seine
-## Fighter warten bei jeder Ankunft, bis alle abgeschossen sind (Config.reception_once; sonst jedes Mal neu).
-func enter_enemy_system() -> void:
-	player_system = 1
-	reception_active = reception_size() > 0
+## Ankunft in einem Feindsystem (am Sprungpunkt nach Helion). [Vorgabe] Es gibt nur EIN Empfangskomitee, in Vorrhal:
+## Seine Fighter warten bei jeder Ankunft, bis alle abgeschossen sind (Config.reception_once; sonst jedes Mal neu).
+## [Vorgabe 0.14.0] Im zweiten Feindsystem gibt es keins.
+func enter_enemy_system(sys := 1) -> void:
+	player_system = 2 if sys == 2 else 1
+	reception_active = player_system == 1 and reception_size() > 0
 	if reception_active:
 		stats.receptions += 1
-	set_player_location(Loc.ENEMY_SYSTEM, -1)
+	set_player_location(Loc.ENEMY_SYSTEM, player_system)
 
 
 ## Fighter des Empfangskomitees bei der nächsten Ankunft.
@@ -1167,7 +1407,12 @@ func on_reception_fighter_killed() -> void:
 # =============================================================================================
 func star_name(system := -1) -> String:
 	var s := player_system if system < 0 else system
-	return ENEMY_STAR_NAME if s == 1 else STAR_NAME
+	match s:
+		1:
+			return ENEMY_STAR_NAME
+		2:
+			return ENEMY2_STAR_NAME
+	return STAR_NAME
 
 
 func is_at_star() -> bool:
@@ -1281,13 +1526,15 @@ func damage_name(k := "") -> String:
 	return DAMAGE_NAMES.get(key, "")
 
 
-## Rücksprung ins Helion-System: Ankunft im Tiefraum am Sprungpunkt oben links.
+## Rücksprung ins Helion-System: Ankunft im Tiefraum am Sprungpunkt des Systems, aus dem man kommt
+## (Vorrhal oben links, das zweite Feindsystem unten rechts).
 func enter_home_system() -> void:
+	var from := player_system
 	player_system = 0
 	reception_active = false
 	player_loc = Loc.SPACE
 	player_loc_id = -1
-	player_map_pos = JUMP_POINT
+	player_map_pos = helion_gate(from)
 	changed.emit()
 
 
@@ -1341,10 +1588,11 @@ func _update_player_map_pos() -> void:
 			if sq:
 				player_map_pos = sq.map_pos
 		Loc.ENEMY_PLANET:
-			if player_loc_id >= 0 and player_loc_id < enemy_planets.size():
-				player_map_pos = enemy_planets[player_loc_id].map_pos()
+			var eps := system_planets(player_system)
+			if player_system > 0 and player_loc_id >= 0 and player_loc_id < eps.size():
+				player_map_pos = eps[player_loc_id].map_pos()
 		Loc.ENEMY_SYSTEM:
-			player_map_pos = ENEMY_GATE
+			player_map_pos = system_gate(player_system)
 		Loc.STAR:
 			player_map_pos = STAR_POS
 

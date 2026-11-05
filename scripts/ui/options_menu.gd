@@ -60,7 +60,15 @@ func _ready() -> void:
 		dvals.append(i)
 	var dopt := _choice(grid, "Schwierigkeit", "difficulty", Settings.difficulty_names(), dvals)
 	(dopt as OptionButton).tooltip_text = _difficulty_help()
-	(dopt as OptionButton).item_selected.connect(func(_i): (dopt as OptionButton).tooltip_text = _difficulty_help())
+	# [0.14.0] Beschreibung der Stufe sichtbar unter der Auswahl (auch für Tastatur/Gamepad, ohne Tooltip)
+	_row_label(grid, "")
+	var dl := UITheme.label(Config.difficulty_level(Settings.difficulty).desc, 18, UITheme.TEXT_DIM)
+	dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	dl.custom_minimum_size = Vector2(520, 0)
+	grid.add_child(dl)
+	(dopt as OptionButton).item_selected.connect(func(_i):
+		(dopt as OptionButton).tooltip_text = _difficulty_help()
+		dl.text = Config.difficulty_level(Settings.difficulty).desc)
 	if GameState.in_game:
 		# die Stufe gilt für die ganze Partie (eigene Highscore-Liste) – nur im Hauptmenü änderbar
 		(dopt as OptionButton).disabled = true

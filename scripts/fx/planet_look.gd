@@ -32,6 +32,17 @@ const SURFACE := {
 		"sky_top": Color(0.06, 0.03, 0.03), "sky_horizon": Color(0.46, 0.22, 0.12), "fog": Color(0.3, 0.16, 0.1), "sun": Color(1.0, 0.62, 0.42), "stars": 0.4, "lava": 0.7, "water": 0.0},
 	"alien_crystal": {"ground_a": Color(0.26, 0.16, 0.38), "ground_b": Color(0.1, 0.2, 0.26), "grid": Color(0.75, 0.45, 1.0),
 		"sky_top": Color(0.05, 0.02, 0.12), "sky_horizon": Color(0.5, 0.3, 0.7), "fog": Color(0.35, 0.22, 0.5), "sun": Color(0.92, 0.85, 1.0), "stars": 0.6, "lava": 0.0, "water": 0.0},
+	# [0.14.0] zweites Feindsystem (blauer Stern Ixmora, kaltes Licht)
+	"alien_void": {"ground_a": Color(0.09, 0.09, 0.2), "ground_b": Color(0.04, 0.04, 0.11), "grid": Color(0.52, 0.48, 1.0),
+		"sky_top": Color(0.01, 0.01, 0.06), "sky_horizon": Color(0.22, 0.21, 0.52), "fog": Color(0.14, 0.14, 0.34), "sun": Color(0.78, 0.84, 1.0), "stars": 0.9, "lava": 0.0, "water": 0.35,
+		"water_color": Color(0.05, 0.06, 0.24)},
+	"alien_glacier": {"ground_a": Color(0.62, 0.66, 0.8), "ground_b": Color(0.33, 0.37, 0.53), "grid": Color(0.55, 0.75, 1.0),
+		"sky_top": Color(0.04, 0.06, 0.2), "sky_horizon": Color(0.5, 0.58, 0.85), "fog": Color(0.48, 0.54, 0.76), "sun": Color(0.82, 0.88, 1.0), "stars": 0.4, "lava": 0.0, "water": 0.0},
+	"alien_magma": {"ground_a": Color(0.11, 0.09, 0.12), "ground_b": Color(0.21, 0.13, 0.12), "grid": Color(1.0, 0.5, 0.22),
+		"sky_top": Color(0.04, 0.02, 0.07), "sky_horizon": Color(0.42, 0.21, 0.32), "fog": Color(0.3, 0.15, 0.2), "sun": Color(0.85, 0.86, 1.0), "stars": 0.5, "lava": 1.0, "water": 0.0},
+	"alien_bloom": {"ground_a": Color(0.05, 0.21, 0.24), "ground_b": Color(0.09, 0.12, 0.21), "grid": Color(0.3, 1.0, 0.85),
+		"sky_top": Color(0.02, 0.06, 0.12), "sky_horizon": Color(0.2, 0.48, 0.55), "fog": Color(0.14, 0.33, 0.4), "sun": Color(0.8, 0.9, 1.0), "stars": 0.3, "lava": 0.0, "water": 0.3,
+		"water_color": Color(0.03, 0.15, 0.2)},
 }
 
 
@@ -70,6 +81,14 @@ static func atmosphere(type: String) -> Color:
 			return Color(0.95, 0.48, 0.3)
 		"alien_crystal":
 			return Color(0.72, 0.5, 1.0)
+		"alien_void":
+			return Color(0.46, 0.46, 1.0)
+		"alien_glacier":
+			return Color(0.62, 0.74, 1.0)
+		"alien_magma":
+			return Color(1.0, 0.46, 0.32)
+		"alien_bloom":
+			return Color(0.32, 0.95, 0.86)
 	return Color(0.4, 0.45, 0.55)
 
 

@@ -19,6 +19,7 @@ var view_fx_layer: CanvasLayer   ## Sichtstörung (Systemschaden) zwischen 3D-Sz
 var view_fx: ViewFX
 var enemies: Array = []
 var frozen := false
+var _scene_age := 0.0                ## Laufzeit der Szene (nachgeholtes Banner zum zweiten Feindsystem)
 var dying := false
 var weapon := Weapon.LASER
 var weapon_manual := Weapon.LASER
@@ -90,9 +91,42 @@ func _ready() -> void:
 	_make_hud()
 	Settings.changed.connect(_on_settings_changed)
 	GameState.energy_changed.connect(_on_energy_changed)
+	GameState.second_system_awakened.connect(_on_second_system_awakened)
 	Audio.loop_start("engine", "engine_loop", 0.0, 1.0)
 	# erst nach dem _ready() der Unterklasse wählen (Modus/Phase sind dann gesetzt)
 	_apply_music.call_deferred()
+
+
+## [0.14.0] Das zweite Feindsystem greift an (Hart/Experte): Funkmeldung als Banner und kurzer Alarm – bei gestörter
+## Kommunikation wie jede Meldung von außen verstümmelt oder ganz verloren. Bei offener Karte oder mitten im
+## Hyperraumsprung kommt beides, sobald der Spieler wieder im Cockpit ist (sonst ginge es mit der alten Szene verloren).
+func _on_second_system_awakened() -> void:
+	if dying or victory_mode or GameState.game_over or GameState.events.is_empty() or GameState.last_event_lost():
+		return
+	var sub := "%s greift an · Sprungpunkt in Helion unten rechts" % GameState.ENEMY2_STAR_NAME
+	if GameState.damage == "comms":
+		sub = GameState.event_shown(GameState.events.back())
+	if frozen or (Main.instance and Main.instance.is_jumping()):
+		GameState.second_banner_pending = sub
+		return
+	_show_second_banner(sub)
+
+
+func _show_second_banner(sub: String) -> void:
+	hud.show_message("ZWEITES FEINDSYSTEM!", sub, 5.0, UITheme.RED)
+	Audio.alarm(-6.0)
+
+
+## Nachgeholtes Banner: nach dem Schließen der Karte sofort, in einer neuen Szene erst nach deren Ankunftsmeldung.
+func _update_second_banner(delta: float) -> void:
+	_scene_age += delta
+	if GameState.second_banner_pending == "" or victory_mode or _scene_age < 3.0:
+		return
+	if GameState.game_over or (Main.instance and Main.instance.is_jumping()):
+		return
+	var sub := GameState.second_banner_pending
+	GameState.second_banner_pending = ""
+	_show_second_banner(sub)
 
 
 ## HUD gemäß Optionen: Cockpit mit Head-Up-Display oder klassische flache Anzeige.
@@ -182,6 +216,7 @@ func _process(delta: float) -> void:
 	_update_post(delta)
 	_update_low_energy(delta)
 	_update_incoming(delta)
+	_update_second_banner(delta)
 
 
 func _update_controls(_delta: float) -> void:
@@ -620,10 +655,9 @@ func play_victory_sequence(cb: Callable) -> void:
 	Audio.stop_all_loops(1.0)
 	Audio.play_music("victory_theme" if Audio.has_music("victory_theme") else "title_theme", 1.2)
 	Audio.sfx("planet_saved", 2.0)
-	var home := GameState.enemy_home()
-	var what := "Alle Städte im %s-System sind zerstört" % GameState.ENEMY_STAR_NAME
+	var what := "Alle Städte %s sind zerstört" % GameState.victory_systems_text()
 	if not Config.victory_all_enemy_cities:
-		what = "%s ist gefallen" % (home.name if home else "Die Heimatwelt")
+		what = "%s gefallen" % GameState.victory_homes_text()
 	hud.show_message("SIEG!", "%s – das %s-System ist gerettet!" % [what, GameState.STAR_NAME], 7.0, UITheme.GREEN)
 	location_sub = "SIEG"
 	hint_text = "Auswertung folgt …"

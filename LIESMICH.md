@@ -16,6 +16,7 @@ Benötigt wird eine Grafikkarte mit Vulkan, DirectX 12 oder OpenGL 3.3. Godot f�
 
 Verteidige das Helion-System. Feindliche Schwadrone kommen aus dem Feindsystem **Vorrhal** (Galaxie oben links auf der Karte). Sie fliegen langsam auf Planeten oder Raumstationen zu, landen und bombardieren Städte.
 **Gewonnen** hast du, sobald **alle Städte im Feindsystem** zerbombt sind. Je nach Schwierigkeitsstufe sind das 36–44 Städte auf 5 Planeten (Fortgeschritten: über 80) und braucht mehrere Angriffe.
+Auf **Hart** und **Experte** greift im Lauf der Partie ein **zweites Feindsystem** an, **Ixmora** (Galaxie unten rechts). Gewonnen ist dann erst, wenn auch dort alle Städte zerbombt sind.
 **Verloren** hast du, wenn deine Energie auf 0 fällt oder alle eigenen Städte zerstört sind.
 Am Ende steht immer eine **Auswertung**: bei Sieg, Game Over und vorzeitigem Abbruch. Dazu gibt es lokale Highscore-Listen, eine je Schwierigkeitsstufe.
 
@@ -24,7 +25,7 @@ Am Ende steht immer eine **Auswertung**: bei Sieg, Game Over und vorzeitigem Abb
 3. **Weltraumkampf**: Erst die Fighter (Bordlaser), danach die Zerstörer nacheinander (Ionen-Kanone). Sie stehen knapp außerhalb des Sichtfelds, also links oder rechts suchen. Ein Flaggschiff kann zusätzlich auftauchen.
 4. **Planetenkampf**: Die Zerstörer schweben über Städten und bombardieren sie. Im Scanner blinkt die bombardierte Stadt. Sind alle Zerstörer vernichtet, ist der Planet gerettet.
 5. **Raumstation**: Andocken, auftanken (10 %/s in 5-%-Schritten), **Bomben nachladen** und **Systemschäden reparieren**. Wird die Station angegriffen, erst die Fighter vernichten.
-6. **Stern** (Helion bzw. Vorrhal, Kartenmitte): Energie fast sofort auffüllen, aber schnell wieder weg. Siehe „Sterne und Systemschäden“.
+6. **Stern** (Helion, Vorrhal bzw. Ixmora, Kartenmitte): Energie fast sofort auffüllen, aber schnell wieder weg. Siehe „Sterne und Systemschäden“.
 7. **Feindsystem**: Siehe nächster Abschnitt.
 
 ## Das Feindsystem (taktischer Teil)
@@ -53,6 +54,19 @@ Tipps:
 - **Ausweichen**: Wer im Moment des Einschlags kräftig lenkt (auf Planeten: schnell fliegt), halbiert die Trefferchance des Gegners. Laser können anfliegende Geschosse auch abschießen.
 - **Taktik**: Kleinere Schwadrone fliegen langsamer. Ein angeschlagenes Schwadron zu verlangsamen kann klüger sein, als es ganz auszulöschen.
 
+## Das zweite Feindsystem Ixmora (Hart und Experte, ab 0.14.0)
+
+- **Wann es angreift**:
+  - **Hart**: sobald Vorrhal **keine Schwadrone mehr bauen** kann, also alle Städte auf den äußeren Planeten Vorrhals zerstört sind.
+  - **Experte**: zusätzlich schon dann, wenn im Helion-System **erstmals 60 Sekunden lang kein feindliches Schwadron** unterwegs ist. Was zuerst eintritt, gilt. Ist Helion frei, zählt die Karte die Zeit bis zum Angriff herunter.
+- **Ankündigung**: Funkmeldung „ALARM: Ein zweites Feindsystem greift an“, kurzer Alarm und ein Banner im Cockpit. Bei offener Karte oder mitten im Hyperraumsprung kommen Banner und Alarm, sobald du wieder im Cockpit bist. Bei gestörter Kommunikation kann die Meldung verstümmelt sein oder fehlen. Die Karte zeigt den neuen Sprungpunkt trotzdem.
+- **Lage**: Galaxie **unten rechts** auf der Systemkarte, gegenüber von Vorrhal. Erreichbar **nur über Helion**: Es gibt keinen Sprung direkt zwischen Vorrhal und Ixmora. Hin- und Rücksprung kosten wie bei Vorrhal je 20 % und dauern dreimal so lange (violetter Hyperraum).
+- **Ixmora**: blauer Stern, **4 Planeten**: Heimatwelt **Thurxa** mit 20 Städten, dazu **Ilvesh** (Gletscherwelt), **Gorrakh** (Magmawelt) und **Seyth** (Leuchtwelt) mit je 15–17 Städten. Der Rücksprungpunkt nach Helion liegt dort **oben links**.
+- **Kein Empfangskomitee.** Verteidiger, Verstärkung, Bomben und Produktion funktionieren wie in Vorrhal. Am Stern Ixmora kann man ebenfalls schnell tanken.
+- **Gemeinsame Grenze**: Beide Feindsysteme teilen sich die Grenze von **6 Schwadronen im Helion-System**. Warten an beiden Sprungpunkten Schwadrone, springt zuerst, wer am längsten wartet. Schwadrone aus Ixmora tauchen in Helion unten rechts auf.
+- **Q/Tab auf der Karte** blättert durch Helion, Vorrhal und Ixmora (nur Ansicht). Springen kannst du nur im eigenen System.
+- Die Auswertung zeigt, wann Ixmora angriff und wie viele seiner Städte zerbombt wurden.
+
 ## Schwierigkeitsstufen (ab 0.13.0)
 
 Die Stufe wählst du unter **Optionen → Schwierigkeit**. Das Titelbild zeigt die gewählte Stufe an. Die Stufen unterscheiden sich vor allem in der Menge an Arbeit bis zum Sieg und damit in der Spieldauer. Jede Stufe hat eine **eigene Highscore-Liste**. Mit ◀ ▶ bzw. Links/Rechts wechselst du zwischen den Listen.
@@ -63,19 +77,21 @@ Die Stufe wählst du unter **Optionen → Schwierigkeit**. Das Titelbild zeigt d
 | Anfänger | 2 | 6–8, Heimatwelt 12 | wie bis 0.12.0 „Normal“ |
 | Normal | 3 | 6–8, Heimatwelt 12 | – |
 | Fortgeschritten | 4 | 15–17, Heimatwelt 20 | Städte weiter über die Oberfläche verteilt: Radius des Einsatzgebiets 45 % größer |
+| Hart (ab 0.14.0) | 4 | 15–17, Heimatwelt 20 | wie Fortgeschritten, Schwadrone 10 % schneller. Kann Vorrhal keine Schwadrone mehr bauen, greift Ixmora an |
+| Experte (ab 0.14.0) | 4 | 15–17, Heimatwelt 20 | wie Hart, Ixmora greift aber schon an, sobald Helion erstmals 60 s lang frei von Schwadronen ist |
 
 - In **allen Stufen** sind jetzt bis zu **6 Schwadrone** gleichzeitig im Helion-System unterwegs (bis 0.12.0: 4).
 - Die Nachschub-Bremse richtet sich nach dem **Anteil** zerstörter Städte auf den äußeren Feindplaneten. Bei 28 äußeren Städten wirkt sie wie bisher (+15 % Abstand je Stadt), bei mehr Städten wirkt jede einzelne entsprechend schwächer, bei weniger stärker.
 - Die Stufe gilt für die ganze Partie und lässt sich nur im Hauptmenü ändern. Im Spiel ist sie in den Optionen gesperrt, denn die Punkte zählen für die Highscore-Liste der Stufe, mit der die Partie begann.
 - Die bisherige Stufe „Schwer“ (130 % Gegnerschaden) entfällt. Wer sie gespeichert hatte, spielt jetzt „Normal“.
-- **Hart** und **Experte** mit einem zweiten Feindsystem folgen in 0.14.0.
+- Auf **Hart** und **Experte** gilt der Sieg erst, wenn die Städte **beider** Feindsysteme zerbombt sind, zusammen rund 150.
 - Die bisherige Highscore-Liste (eine für alle) steht jetzt unter **Anfänger**, das war der bisherige Standard „Normal“.
 - Eine `balance.cfg` geht den Stufen vor, wenn sie einen Wert **abweichend vom Standard** setzt. Setzt sie z. B. `initial_squadrons=5`, gilt das in jeder Stufe. Eine unveränderte Kopie der `balance_template.cfg` schaltet die Stufen dagegen nicht ab.
 
 ## Sterne und Systemschäden (ab 0.12.0)
 
 **Stern – Schnelltanken**
-- In der Mitte beider Systemkarten liegt ein Stern: **Helion** bzw. **Vorrhal**. Er lässt sich wie jedes andere Ziel anspringen.
+- In der Mitte jeder Systemkarte liegt ein Stern: **Helion**, **Vorrhal** bzw. (Hart/Experte) **Ixmora**. Er lässt sich wie jedes andere Ziel anspringen.
 - Am Stern füllt sich die Energie **fast sofort**: 25 % pro Sekunde, von 0 auf 100 % in 4 Sekunden.
 - Er **repariert nichts** und lädt **keine Bomben** nach. Das geht nur an Stationen.
 - Gleichzeitig steigt die **Hitze**. Nach **10 Sekunden** verglüht das Schiff (Game Over). Ab 60 % Hitze gibt es Warntöne und rote Anzeigen, auch auf der Karte.
@@ -176,15 +192,18 @@ Testszenarien über die Kommandozeile (`StarfighterDefense -- --test=…`):
 
 | Szenario | Inhalt |
 |---|---|
-| `enemy` | Sprung ins Feindsystem mit Empfangskomitee |
-| `enemy_planet` | Feindplanet, `--planet=0…4` (0 = Heimatwelt), `--nodefenders` ohne Verteidiger |
-| `victory` | Nur noch eine einzige Feindstadt im System, auf `--planet=N`, Standard Heimatwelt (Sieg testen) |
-| `enemy_map` | Feindkarte mit startenden Schwadronen |
+| `enemy` | Sprung ins Feindsystem mit Empfangskomitee (`--system=2`: Ixmora, ohne Empfangskomitee) |
+| `enemy_planet` | Feindplanet, `--planet=0…4` (0 = Heimatwelt), `--nodefenders` ohne Verteidiger, `--system=2` für Ixmora (`--planet=0…3`) |
+| `victory` | Nur noch eine einzige Feindstadt, auf `--planet=N`, Standard Heimatwelt (Sieg testen); `--system=2` für Ixmora |
+| `enemy_map` | Feindkarte mit startenden Schwadronen; `--system=2` für Ixmora, `--waiting=N` zusätzlich N am Sprungpunkt wartende Schwadrone |
+| `enemy_intercept` | Schwadron im Feindsystem abfangen; `--system=2` für Ixmora |
+| `map` | Systemkarte; `--awaken` lässt Ixmora angreifen, `--view=1\|2` zeigt Vorrhal bzw. Ixmora, `--select=enemy\|enemy2` wählt den Sprungpunkt nach Vorrhal bzw. Ixmora |
 | `evaluation` | Auswertungsbildschirm, `--end=victory\|abort\|gameover` |
-| `star` | Am Stern, `--system=1` für Vorrhal, `--energy=N` Startenergie |
+| `star` | Am Stern, `--system=1` für Vorrhal, `--system=2` für Ixmora, `--energy=N` Startenergie |
 | `highscores` | Highscore-Tabellen je Schwierigkeitsstufe |
+| `options` | Optionen aus dem Hauptmenü, `--scroll=PX` scrollt nach unten (z. B. zur Schwierigkeit) |
 
-Schwierigkeitsstufe für Tests: `--difficulty=0…3` (Kinderspiel, Anfänger, Normal, Fortgeschritten). Sie wird nicht gespeichert und funktioniert auch mit `--autoplay`.
+Schwierigkeitsstufe für Tests: `--difficulty=0…5` (Kinderspiel, Anfänger, Normal, Fortgeschritten, Hart, Experte). Sie wird nicht gespeichert und funktioniert auch mit `--autoplay`. `--system=2` legt Ixmora bei Bedarf auch auf niedrigeren Stufen an.
 
 Zusätzliche Testhilfen (0.12.0, in allen Testszenarien `--test=…`; ein reines `--autoplay` ohne Szenario beginnt ein neues Spiel und setzt sie zurück):
 - `--energy=N`: Startenergie, z. B. unter 30 %, damit Treffer Systemschäden auslösen können.
@@ -193,19 +212,24 @@ Zusätzliche Testhilfen (0.12.0, in allen Testszenarien `--test=…`; ein reines
 - `--burst_kind=0|1` (mit `--burst`): Art der Stöße, 0 = Schnee, 1 = grüne Streifen.
 - `--burst_hold` (mit `--burst`): hält den Stoß ab Szenenbeginn dauerhaft auf voller Stärke, für Standbilder.
 - `--comms_demo` (mit `--damage=comms`): erzeugt einige Meldungen von außen, die verloren gehen oder verstümmelt ankommen.
+- `--awaken_at=S` (0.14.0): Ixmora greift nach S Sekunden an, z. B. für Bilder von Banner und Alarm in einer laufenden Szene.
 
 Mit `-- --autoplay --raid` greift der automatische Testfahrer auch das Feindsystem an. Optionen:
 - `--human`: menschenähnlicher Testfahrer
 - `--raid_target=auto|home|outer`: Wahl der Angriffsziele
 - `--raid_safe`: „Verteidigung zuerst“. Er greift nur an, wenn in Helion länger keine Landung droht, und springt sofort zurück, sobald eine Landung näher rückt.
 - `--raid_intercept`: Er fängt startende Schwadrone schon im Feindsystem ab.
+- `--raid_patience=S` (mit `--raid_safe`, 0.14.0): Nach S Sekunden Strategiezeit ohne Angriff greift er trotzdem an und bleibt, bis die Bomben verbraucht sind. Nur gelandete Schwadrone und Stationsangriffe halten ihn dann noch ab, wie bei einem Menschen, der nicht endlos nur verteidigt.
+- Auf Hart/Experte wählt er zuerst das Feindsystem, das noch Schwadrone baut und dessen Produktion am ehesten zu stoppen ist.
+- `--fpscap=N` (0.14.0): Bildrate wie im Spiel begrenzen (die Testläufe laufen sonst unbegrenzt schnell). Wirkt nur ohne `--fixed-fps`; das Spiel läuft dann in Echtzeit.
 
 ## Auswertung
 
 Am Ende jeder Partie (Sieg, Game Over oder Abbruch über *Pause → Spiel beenden*) zeigt das Spiel:
 - zerstörte Fighter, abgeschossene Zerstörer, vernichtete Flaggschiffe und zerbombte Feindstädte, jeweils mit den erzielten Punkten,
 - verlorene eigene Städte und die Spielzeit,
-- Boni, vernichtete Schwadrone, Bombentreffer, Sprünge, Sternbesuche, Systemschäden (davon repariert) und erreichte Stufe.
+- Boni, vernichtete Schwadrone, Bombentreffer, Sprünge, Sternbesuche, Systemschäden (davon repariert) und erreichte Stufe,
+- auf Hart/Experte, wann das zweite Feindsystem angriff und wie viele seiner Städte zerbombt wurden.
 
 Jede Auswertung wird zusätzlich als Zeile an **`auswertungen.csv`** im Benutzerordner angehängt (Semikolon-getrennt, für Excel/LibreOffice). So lassen sich Punktzahlen verschiedener Taktiken vergleichen. Kommen neue Spalten hinzu (z. B. Sternbesuche in 0.12.0), schreibt das Spiel vor der nächsten Zeile eine neue Kopfzeile.
 
@@ -233,6 +257,16 @@ Eine Vorlage mit allen Werten schreibt das Spiel beim Start nach `balance_templa
 Dort liegen auch `highscores.json` und `settings.cfg`.
 
 Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automatische Waffenwahl, 9/12 Fighter im Orbit, die [VERMUTET]-Regel „Schwadron mit nur einem Zerstörer bleibt zeitweise stehen“, Scanner-Ausrichtung, Randpfeile, Retro-Filter und die Cockpit-Ansicht. Die Schwierigkeit lässt sich nur im Hauptmenü ändern.
+
+## Änderungen in Version 0.14.0 – Zweites Feindsystem, Stufen Hart und Experte
+
+- **Neue Stufen Hart und Experte**: wie Fortgeschritten, Schwadrone 10 % schneller, dazu das zweite Feindsystem **Ixmora**. Details siehe „Das zweite Feindsystem Ixmora“.
+- **Ixmora**: blauer Stern, 4 Planeten mit eigenen Oberflächen (Gletscher-, Magma-, Leuchtwelt, Heimatwelt Thurxa), eigener Himmel und Kartenhintergrund, kein Empfangskomitee, nur über Helion erreichbar.
+- **Gemeinsame Grenze** von 6 Schwadronen in Helion für beide Feindsysteme. Wer am längsten am Sprungpunkt wartet, springt zuerst.
+- **Sieg** auf Hart/Experte erst, wenn die Städte beider Feindsysteme zerbombt sind.
+- **Karte**: Q/Tab blättert durch alle drei Systeme. Zweiter Sprungpunkt unten rechts, Countdown bis zum Angriff auf Experte.
+- Eigene Highscore-Listen für Hart und Experte. Die Auswertung und `auswertungen.csv` enthalten den Angriffszeitpunkt von Ixmora und dessen zerbombte Städte.
+- Neue Testhilfen: `--system=2`, `--view=1|2`, `--awaken`, `--waiting=N` (siehe „Testfunktionen“).
 
 ## Änderungen in Version 0.13.0 – Schwierigkeitsstufen
 
@@ -345,6 +379,18 @@ Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automati
 ## Stand / offene Punkte
 
 - **Militär-Rang und Siegbonus** folgen nach deinen Tests. Vorgesehen ist `bonus_victory` in `config.gd`, derzeit 0.
+- **Messung 0.14.0** (Hart und Experte) mit dem menschenähnlichen Testfahrer, Abbruch nach 150 Minuten Spielzeit. „Angriff“ = Sturmangriff (`--raid`), „vorsichtig“ = Verteidigung zuerst (`--raid_safe`), „ungeduldig“ = Verteidigung zuerst, aber nach 8 Minuten ohne Angriff greift er trotzdem an (`--raid_safe --raid_patience=480`). Spielzeit bis zum Sieg in Minuten:
+
+  | Stufe | Angriff | vorsichtig | ungeduldig |
+  |---|---|---|---|
+  | Hart | 42 und 50 (27 bzw. 83 von ~80 Städten verloren) | 91 (13 verloren); 2 Partien nach 150 Minuten offen | 123 (64 verloren); 2 Partien verloren (nach 44 und 94 Minuten) |
+  | Experte | 48 und 57 (47 bzw. 75 verloren) | 122 und 126 (0 bzw. 6 verloren); 1 Partie nach 150 Minuten offen | 94 und 104 (48 bzw. 52 verloren); 1 Partie verloren (nach 75 Minuten) |
+  | Fortgeschritten (Vergleich) | 27 (27 verloren) | – | 56 und 76 (12 bzw. 26 verloren) |
+
+  - Ixmora griff in allen Partien an, sobald Vorrhal keine Schwadrone mehr baute, meist nach 22–72 Minuten. Der 60-Sekunden-Auslöser von Experte kam in den Messungen nie zum Zug: Vorrhal liefert ständig nach, der Testfahrer räumt Helion nie so lange leer.
+  - Auf Hart und Experte ist Helion fast ständig voll (6 Schwadrone). Wer nur verteidigt, kommt kaum zum Angriff. Wer angreift, verliert viele eigene Städte. Beide Stufen sind damit deutlich schwerer und länger als Fortgeschritten.
+  - Drei von 23 beschleunigten Testläufen stürzten im bekannten Engine-Fehler des Audio-Mischthreads ab (gleiche Signatur wie 0.10.2). Er tritt nur bei über 1000 fps auf, in den langen, kampfreichen Partien auf Hart/Experte entsprechend öfter. Die Läufe wurden wiederholt. Im Spiel begrenzt `max_fps` (240) das Risiko.
+  - Einstellschrauben: Städte von Ixmora `second_city_count_min/max`, `second_home_city_count`; Tempo `squadron_speed_factor`; Experte-Auslöser `second_system_empty_time`.
 - **Messung 0.13.0** je Schwierigkeitsstufe mit dem menschenähnlichen Testfahrer. „Vorsichtig“ = Verteidigung zuerst (`--raid_safe`), „Angriff“ = Sturmangriff (`--raid`). Spielzeit in Minuten:
 
   | Stufe | vorsichtig | verlorene Städte | Angriff | verlorene Städte |
@@ -383,6 +429,7 @@ scripts/fx/view_fx.gd         Sichtstörung (Systemschaden), nur auf den Scheibe
 shaders/                      Himmel, Planeten, Boden, Schilde, Explosionen, Hyperraum, Nachbearbeitung
 assets/                       Modelle (glb), Texturen, Audio, Schriften (OFL)
 tools/                        Generatoren: Blender-Modelle, Texturen, Klangsynthese/Komposition
+tools/textures/gen_alien2_planets.py, gen_sky_enemy2.py, gen_map_bg_enemy2.py   Ixmora (0.14.0): Planeten, Himmel, Karte
 ```
 
 Schriften: Orbitron, Rajdhani, Share Tech Mono (SIL Open Font License, siehe `assets/fonts/`).

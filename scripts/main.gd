@@ -31,8 +31,12 @@ var _test := {}
 
 func _ready() -> void:
 	instance = self
-	# Bildrate begrenzen (siehe Config.max_fps); die beschleunigten Testläufe (--autoplay) laufen unbegrenzt
+	# Bildrate begrenzen (siehe Config.max_fps); die beschleunigten Testläufe (--autoplay) laufen unbegrenzt,
+	# außer mit --fpscap=N (Testhilfe: Testfahrer unter Spielbedingungen, z. B. 240 fps; wirkt nur ohne --fixed-fps)
 	Engine.max_fps = 0 if OS.get_cmdline_user_args().has("--autoplay") else maxi(Config.max_fps, 0)
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--fpscap="):
+			Engine.max_fps = maxi(int(a.substr(9)), 0)
 	get_tree().root.theme = UITheme.get_theme()
 	state_root = Node.new()
 	state_root.name = "StateRoot"
@@ -230,7 +234,7 @@ func close_map(resume := true) -> void:
 
 ## Kartenmusik des Systems, in dem sich der Spieler befindet.
 func map_music() -> String:
-	return "enemy_system_theme" if GameState.player_system == 1 else "map_theme"
+	return "enemy_system_theme" if GameState.player_system != 0 else "map_theme"
 
 
 func is_jumping() -> bool:
@@ -248,6 +252,8 @@ func request_jump(kind: int, id: int) -> void:
 			return   # die letzte Bombe hat die letzte Feindstadt getroffen: Sieg statt Sprung
 	var target_pos := _loc_map_pos(kind, id)
 	var long := GameState.is_cross_system(kind)
+	# Langsprung vom bzw. ins zweite Feindsystem: violetter statt rötlicher Hyperraum
+	var second := long and ((kind == GameState.Loc.ENEMY_SYSTEM and id == 2) or (kind == GameState.Loc.HOME_SYSTEM and GameState.player_system == 2))
 	_jumping = true
 	_jump_target_pos = target_pos
 	GameState.leave_star()   # Absprung vom Stern: keine Hitze mehr
@@ -261,7 +267,7 @@ func request_jump(kind: int, id: int) -> void:
 	, func():
 		_jumping = false
 		GameState.jump_finished()   # Stern: Hitze erst, wenn der Spieler wieder handeln kann
-	, long)
+	, long, second)
 
 
 func _loc_map_pos(kind: int, id: int) -> Vector2:
@@ -274,11 +280,11 @@ func _loc_map_pos(kind: int, id: int) -> Vector2:
 			var sq := GameState.squadron_by_id(id)
 			return sq.map_pos if sq else GameState.player_map_pos
 		GameState.Loc.ENEMY_SYSTEM:
-			return GameState.JUMP_POINT
+			return GameState.helion_gate(maxi(id, 1))
 		GameState.Loc.ENEMY_PLANET:
-			return GameState.enemy_planets[id].map_pos()
+			return GameState.system_planets(GameState.player_system)[id].map_pos()
 		GameState.Loc.HOME_SYSTEM:
-			return GameState.ENEMY_GATE
+			return GameState.system_gate(GameState.player_system)
 		GameState.Loc.STAR:
 			return GameState.STAR_POS
 	return GameState.player_map_pos
@@ -310,15 +316,16 @@ func _enter_location(kind: int, id: int) -> void:
 				GameState.set_player_location(GameState.Loc.SQUADRON, id)
 				_set_scene(SpaceCombat.create_squadron(sq), State.SPACE)
 		GameState.Loc.ENEMY_SYSTEM:
-			# Ankunft im Feindsystem: Empfangskomitee, solange es noch Fighter hat (Config.reception_once)
-			GameState.enter_enemy_system()
+			# Ankunft im Feindsystem (id = 1 Vorrhal, 2 zweites): Empfangskomitee nur in Vorrhal, solange es noch
+			# Fighter hat (Config.reception_once)
+			GameState.enter_enemy_system(maxi(id, 1))
 			_set_scene(SpaceCombat.create_reception(), State.SPACE)
 		GameState.Loc.HOME_SYSTEM:
 			GameState.enter_home_system()
 			_set_scene(SpaceCombat.create_empty(true), State.SPACE)
 		GameState.Loc.ENEMY_PLANET:
 			GameState.set_player_location(GameState.Loc.ENEMY_PLANET, id)
-			_set_scene(PlanetCombat.create(GameState.enemy_planets[id]), State.PLANET)
+			_set_scene(PlanetCombat.create(GameState.system_planets(GameState.player_system)[id]), State.PLANET)
 		GameState.Loc.STAR:
 			# [Vorgabe] Stern: Schnelltanken mit Hitze (Helion bzw. Vorrhal je nach System)
 			GameState.arrive_at_star()
@@ -397,7 +404,7 @@ func _debug_key(code: int) -> void:
 			if _jumping or GameState.game_over:
 				return
 			var p: PlanetData = GameState.planets[(GameState.player_loc_id + 1) % GameState.planets.size()] if GameState.player_loc == GameState.Loc.PLANET else GameState.home_planet()
-			if GameState.player_system == 1:
+			if GameState.player_system != 0:
 				GameState.enter_home_system()
 			GameState.debug_land_squadron_on(p)
 			close_map(false)
@@ -429,6 +436,14 @@ func _debug_key(code: int) -> void:
 #  Testfahrer (Balancing-Messung, Protokoll mit SQUAD_COST/RUN_SUMMARY in der Konsole):
 #    godot --headless --path . --fixed-fps 60 --quit-after 54000 -- --autoplay [--human] [--h_evade=0.3 …]
 # =============================================================================================
+## Testhilfe: Feindsystem aus --system (1 = Vorrhal, 2 = zweites Feindsystem – wird dafür angelegt und geweckt).
+func _test_system() -> int:
+	if int(_test.get("system", "1")) == 2:
+		GameState.debug_awaken_second()
+		return 2
+	return 1
+
+
 func _parse_test_args() -> void:
 	# Hinweis: GameState.time_scale wird in new_game() zurückgesetzt; --simspeed greift danach erneut
 	for a in OS.get_cmdline_user_args():
@@ -453,7 +468,7 @@ func _run_test_scenario() -> void:
 	if _test.has("classic"):
 		Settings.cockpit_view = false   # Testhilfe: klassisches HUD (wird nicht gespeichert)
 	if _test.has("difficulty"):
-		# Testhilfe: Schwierigkeitsstufe 0–3 (Kinderspiel, Anfänger, Normal, Fortgeschritten), wird nicht gespeichert
+		# Testhilfe: Schwierigkeitsstufe 0–5 (Kinderspiel, Anfänger, Normal, Fortgeschritten, Hart, Experte), wird nicht gespeichert
 		Settings.difficulty = int(_test["difficulty"])
 		Settings.apply()
 	if _test.has("holdsteer"):
@@ -477,6 +492,19 @@ func _run_test_scenario() -> void:
 			await get_tree().process_frame
 			if scene is TitleScreen:
 				(scene as TitleScreen)._open(HighscoreView.new())
+		"options":
+			# Testhilfe: Optionen aus dem Hauptmenü (Schwierigkeit mit Beschreibung)
+			goto_title()
+			await get_tree().process_frame
+			await get_tree().process_frame
+			if scene is TitleScreen:
+				var om := OptionsMenu.new()
+				(scene as TitleScreen)._open(om)
+				if _test.has("scroll"):
+					# Testhilfe: --scroll=PX scrollt die Optionen (z. B. zur Schwierigkeit)
+					await get_tree().process_frame
+					for sc2 in om.find_children("*", "ScrollContainer", true, false):
+						(sc2 as ScrollContainer).scroll_vertical = int(_test["scroll"])
 		"orbit":
 			_set_scene(SpaceCombat.create_orbit(), State.ORBIT)
 		"space", "squadron":
@@ -507,13 +535,25 @@ func _run_test_scenario() -> void:
 		"map":
 			GameState.start_campaign()
 			GameState.time_scale = 1.0
+			if _test.has("awaken"):
+				GameState.debug_awaken_second()   # Testhilfe: zweites Feindsystem greift an (Sprungpunkt in Helion unten rechts)
 			_set_scene(SpaceCombat.create_orbit(true), State.ORBIT)
 			await get_tree().process_frame
 			open_map()
 			if _test.get("select", "") == "enemy" and map_screen:
-				map_screen._select(GameState.Loc.ENEMY_SYSTEM, -1, false)
+				map_screen._select(GameState.Loc.ENEMY_SYSTEM, 1, false)
+			if _test.get("select", "") == "enemy2" and map_screen and GameState.second_active:
+				map_screen._select(GameState.Loc.ENEMY_SYSTEM, 2, false)
 			if _test.has("enemyview") and map_screen:
 				map_screen.toggle_view()
+			if _test.has("view") and map_screen:
+				# Testhilfe: --view=2 zeigt das zweite Feindsystem (wird bei Bedarf geweckt)
+				if int(_test["view"]) == 2:
+					GameState.debug_awaken_second()
+				for k in 3:
+					if map_screen.view_system == int(_test["view"]):
+						break
+					map_screen.toggle_view()
 			if _test.has("jumptest"):
 				await get_tree().create_timer(1.5).timeout
 				request_jump(GameState.Loc.SQUADRON, GameState.squadrons[0].id)
@@ -530,54 +570,82 @@ func _run_test_scenario() -> void:
 			GameState.in_game = false
 			_set_scene(GameOverScreen.new(), State.GAME_OVER)
 		"star":
-			# Stern (Schnelltanken): --system=1 für Vorrhal, --energy=N Startenergie
+			# Stern (Schnelltanken): --system=1 für Vorrhal, --system=2 für das zweite Feindsystem, --energy=N Startenergie
 			GameState.start_campaign()
-			if _test.get("system", "0") == "1":
-				GameState.player_system = 1
+			var ssys := int(_test.get("system", "0"))
+			if ssys == 2:
+				GameState.debug_awaken_second()
+			if ssys > 0:
+				GameState.player_system = ssys
 				GameState.reception_active = false
 			GameState.energy = float(_test.get("energy", "20"))
 			_enter_location(GameState.Loc.STAR, GameState.player_system)
 			GameState.jump_finished()   # ohne Hyperraum-Übergang
 		"enemy":
-			# Sprung ins Feindsystem: Empfangskomitee
+			# Sprung ins Feindsystem: Empfangskomitee (--system=2: zweites Feindsystem, ohne Empfangskomitee)
 			GameState.start_campaign()
-			_enter_location(GameState.Loc.ENEMY_SYSTEM, -1)
+			_enter_location(GameState.Loc.ENEMY_SYSTEM, _test_system())
 		"enemy_planet", "victory":
-			# Feindplanet (--planet=N, 0 = Heimatwelt); --nodefenders: Luftverteidigung bereits ausgeschaltet
+			# Feindplanet (--planet=N, 0 = Heimatwelt; --system=2: zweites Feindsystem); --nodefenders: Luftverteidigung
+			# bereits ausgeschaltet
 			GameState.start_campaign()
-			GameState.player_system = 1
+			var esys := _test_system()
+			GameState.player_system = esys
 			GameState.reception_active = false
-			var idx := clampi(int(_test.get("planet", "0" if what == "victory" else "1")), 0, GameState.enemy_planets.size() - 1)
-			var ep: PlanetData = GameState.enemy_planets[idx]
+			var eps: Array = GameState.system_planets(esys)
+			var idx := clampi(int(_test.get("planet", "0" if what == "victory" else "1")), 0, eps.size() - 1)
+			var ep: PlanetData = eps[idx]
 			if _test.has("nodefenders") or what == "victory":
 				ep.defenders = 0
 			if what == "victory":
-				# nur noch eine einzige Feindstadt übrig (auf diesem Planeten)
-				for op in GameState.enemy_planets:
+				# nur noch eine einzige Feindstadt übrig (auf diesem Planeten); ein zweites Feindsystem gilt als
+				# bereits erwacht und erledigt (ohne Alarm mitten im Siegtest)
+				if not GameState.enemy2_planets.is_empty() and not GameState.second_active:
+					GameState.second_active = true
+					GameState.second_reason = "test"
+					GameState.second_awake_time = GameState.sim_time
+					GameState._production_stop_logged = true
+					GameState._production2_stop_logged = true
+				for op in GameState.enemy_planets + GameState.enemy2_planets:
 					for ci in op.cities.size():
 						if op != ep or ci < op.cities.size() - 1:
 							op.cities[ci] = false
 			_enter_location(GameState.Loc.ENEMY_PLANET, idx)
 		"enemy_intercept":
-			# Schwadron im Feindsystem abfangen (Zerstörer/Flaggschiff möglich)
+			# Schwadron im Feindsystem abfangen (Zerstörer/Flaggschiff möglich; --system=2: zweites Feindsystem)
 			GameState.start_campaign()
-			GameState.player_system = 1
+			var isys := _test_system()
+			GameState.player_system = isys
 			GameState.reception_active = false
-			var esq: SquadronData = GameState._launch_enemy_squadron(GameState.enemy_planets[2], 2, 0.4)
+			var esq: SquadronData = GameState._launch_enemy_squadron(GameState.system_planets(isys)[2], 2, 0.4)
 			if _test.has("flagship"):
 				esq.has_flagship = true
 			_enter_location(GameState.Loc.SQUADRON, esq.id)
 		"enemy_map":
+			# Karte eines Feindsystems mit startenden Schwadronen (--system=2: zweites Feindsystem)
 			GameState.start_campaign()
 			GameState.time_scale = 1.0
-			GameState.player_system = 1
+			var msys := _test_system()
+			GameState.player_system = msys
 			GameState.reception_active = false
 			for i in 2:
-				GameState._launch_enemy_squadron(GameState.enemy_planets[1 + i], 1, 0.3 + 0.3 * i)
-			GameState.set_player_location(GameState.Loc.ENEMY_SYSTEM, -1)
+				GameState._launch_enemy_squadron(GameState.system_planets(msys)[1 + i], 1, 0.3 + 0.3 * i)
+			if _test.has("waiting"):
+				# Testhilfe: wartende Schwadrone am Sprungpunkt (Helion voll)
+				while GameState.squadrons.size() < Config.max_squadrons:
+					GameState._spawn_squadron(GameState.level, 0.5)
+				for j in int(_test["waiting"]):
+					var wsq: SquadronData = GameState._launch_enemy_squadron(GameState.system_planets(msys)[1 + j % 3], 1, 1.0)
+					wsq.map_pos = GameState.system_gate(msys)
+					wsq.state = SquadronData.State.WAITING
+					wsq.wait_since = GameState.sim_time
+			GameState.set_player_location(GameState.Loc.ENEMY_SYSTEM, msys)
 			_set_scene(SpaceCombat.create_empty(), State.SPACE)
 			await get_tree().process_frame
 			open_map()
+	if _test.has("awaken_at"):
+		# Testhilfe: das zweite Feindsystem nach S Sekunden angreifen lassen (Banner/Alarm in der laufenden Szene)
+		get_tree().create_timer(float(_test["awaken_at"])).timeout.connect(func(): GameState.debug_awaken_second())
 	if _test.has("toggle_hud"):
 		# Testhilfe: Cockpit-Ansicht nach N Sekunden umschalten (wie in den Optionen mitten im Kampf)
 		get_tree().create_timer(float(_test["toggle_hud"])).timeout.connect(func():

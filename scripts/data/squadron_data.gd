@@ -3,7 +3,7 @@ extends RefCounted
 ## Zustand eines feindlichen Schwadrons.  [ORIGINAL] 3–12 Fighter, 1–3 Zerstörer, eventuell 1 Flaggschiff
 
 enum State { TRANSIT, LANDED, AT_STATION, DESTROYED, WAITING }
-enum TargetKind { PLANET, STATION, GATE }   ## GATE = Sprungpunkt des Feindsystems ins Helion-System
+enum TargetKind { PLANET, STATION, GATE }   ## GATE = Sprungpunkt eines Feindsystems ins Helion-System
 
 var id := 0
 var name := ""
@@ -19,8 +19,10 @@ var level := 0
 var stop_clock := 0.0           ## [VERMUTET] Takt für "bleibt zeitweise stehen"
 var group_city := -1            ## Stadt, um die sich das Schwadron auf dem Planeten gruppiert
 var spawn_time := 0.0
-var system := 0                 ## 0 = Helion-System, 1 = Feindsystem (auf dem Weg zum Sprungpunkt)
+var system := 0                 ## 0 = Helion-System, 1 = Feindsystem Vorrhal, 2 = zweites Feindsystem (auf dem Weg zum Sprungpunkt)
+var from_system := 1            ## Herkunft (1 = Vorrhal, 2 = zweites Feindsystem): dort springt es nach Helion
 var origin := ""                ## Startplanet im Feindsystem (Anzeige)
+var wait_since := -1.0          ## sim_time der Ankunft am Sprungpunkt (wer am längsten wartet, springt zuerst)
 
 
 func strength() -> float:

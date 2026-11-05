@@ -61,11 +61,10 @@ func _ready() -> void:
 	if _kind == "victory":
 		title = "SIEG!"
 		tcol = UITheme.GREEN
-		var home := GameState.enemy_home()
 		if Config.victory_all_enemy_cities:
-			reason = "Alle Städte im %s-System sind zerstört – das %s-System ist gerettet." % [GameState.ENEMY_STAR_NAME, GameState.STAR_NAME]
+			reason = "Alle Städte %s sind zerstört – das %s-System ist gerettet." % [GameState.victory_systems_text(), GameState.STAR_NAME]
 		else:
-			reason = "Die feindliche Heimatwelt %s ist gefallen – das %s-System ist gerettet." % [home.name if home else "", GameState.STAR_NAME]
+			reason = "%s gefallen – das %s-System ist gerettet." % [GameState.victory_homes_text(), GameState.STAR_NAME]
 	elif _kind == "abort":
 		title = "EINSATZ ABGEBROCHEN"
 		tcol = UITheme.AMBER
@@ -158,13 +157,19 @@ func _build_evaluation() -> Control:
 		bomb_line = "%d Treffer / %d abgeworfen" % [st.get("bombs_hit", 0), st.get("bombs_dropped", 0)]
 	var extras := [
 		["Boni (Schwadrone, Planeten, Stationen, Orbit)", "+%d" % int(pts.get("bonus", 0))],
-		["Vernichtete Schwadrone (im Feindsystem)", "%d (%d)" % [st.get("squadrons", 0), st.get("enemy_squadrons_intercepted", 0)]],
+		["Vernichtete Schwadrone (in den Feindsystemen)" if not GameState.enemy2_planets.is_empty() else "Vernichtete Schwadrone (im Feindsystem)", "%d (%d)" % [st.get("squadrons", 0), st.get("enemy_squadrons_intercepted", 0)]],
 		["Gerettete Planeten · verteidigte Stationen", "%d · %d" % [st.get("planets_saved", 0), st.get("stations_defended", 0)]],
 		["Bomben", bomb_line],
 		["Sprünge (davon zwischen den Systemen)", "%d (%d)" % [st.get("jumps", 0), st.get("enemy_jumps", 0)]],
 		["Sternbesuche · Systemschäden (repariert)", "%d · %d (%d)" % [st.get("star_visits", 0), st.get("damages", 0), st.get("repairs", 0)]],
 		["Erreichte Stufe · Schwierigkeit", "%d · %s" % [GameState.level + 1, GameState.difficulty_name]],
 	]
+	if not GameState.enemy2_planets.is_empty():
+		# [0.14.0] Hart/Experte: wann das zweite Feindsystem angriff und wie viel davon zerbombt ist
+		var s2 := "griff nicht an"
+		if GameState.second_active:
+			s2 = "ab %s · %d / %d Städte" % [GameState.format_time(GameState.second_awake_time), int(st.get("enemy2_cities", 0)), GameState.enemy_cities_total(2)]
+		extras.insert(1, ["Zweites Feindsystem %s" % GameState.ENEMY2_STAR_NAME, s2])
 	for e in extras:
 		extra.add_child(UITheme.label(e[0], 21, UITheme.TEXT_DIM))
 		var lv := UITheme.label(e[1], 21, UITheme.TEXT, "mono")

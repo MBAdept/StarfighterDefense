@@ -37,7 +37,8 @@ var difficulty_scale := 1.0             ## [FREI] von der Schwierigkeitsstufe ge
 ## und gilt für die ganze Partie (eine Änderung mitten im Spiel wirkt ab der nächsten). Ausnahme: Schlüssel, die eine
 ## balance.cfg auf einen anderen Wert als den Standard setzt – die gehen vor. Jede Stufe hat eine eigene
 ## Highscore-Liste ("key").
-## Hart und Experte (zweites Feindsystem) folgen in 0.14.0.
+## [Vorgabe 0.14.0] Hart und Experte: wie Fortgeschritten, Schwadrone 10 % schneller und ein zweites Feindsystem
+## (siehe „Zweites Feindsystem“ weiter unten). Schlüssel, die eine Stufe nicht nennt, gelten mit ihrem Standardwert.
 const DIFFICULTY_LEVELS := [
 	{"key": "kinderspiel", "name": "Kinderspiel",
 		"desc": "Weniger Schaden, langsamere und seltenere Schwadrone (bis 0.12.0 „Leicht“)",
@@ -55,6 +56,14 @@ const DIFFICULTY_LEVELS := [
 		"desc": "4 Schwadrone zu Beginn, 15–17 Städte je Feindplanet (Heimatwelt 20), weiter verteilt",
 		"values": {"difficulty_scale": 1.0, "initial_squadrons": 4, "enemy_city_count_min": 15, "enemy_city_count_max": 17,
 			"enemy_home_city_count": 20, "enemy_planet_area_factor": 1.45}},
+	{"key": "hart", "name": "Hart",
+		"desc": "Wie Fortgeschritten, Schwadrone 10 % schneller – kann Vorrhal keine Schwadrone mehr bauen, greift ein zweites Feindsystem an",
+		"values": {"difficulty_scale": 1.0, "initial_squadrons": 4, "enemy_city_count_min": 15, "enemy_city_count_max": 17,
+			"enemy_home_city_count": 20, "enemy_planet_area_factor": 1.45, "squadron_speed_factor": 1.1, "second_system_mode": 1}},
+	{"key": "experte", "name": "Experte",
+		"desc": "Wie Hart – das zweite Feindsystem greift aber schon an, sobald Helion erstmals 60 s lang frei von Schwadronen ist",
+		"values": {"difficulty_scale": 1.0, "initial_squadrons": 4, "enemy_city_count_min": 15, "enemy_city_count_max": 17,
+			"enemy_home_city_count": 20, "enemy_planet_area_factor": 1.45, "squadron_speed_factor": 1.1, "second_system_mode": 2}},
 ]
 
 # ---------------------------------------------------------------------------------------------
@@ -219,7 +228,7 @@ var flagship_weakpoint_radius := 5.0    ## [FREI] Trefferradius des rosa Quadrat
 # ---------------------------------------------------------------------------------------------
 #  Schwadrone (Übersichtskarte)
 # ---------------------------------------------------------------------------------------------
-var max_squadrons := 6                  ## [Vorgabe 0.13.0] bis zu 6 gleichzeitig im Helion-System (bis 0.12.0: 4 [ORIGINAL])
+var max_squadrons := 6                  ## [Vorgabe 0.13.0] bis zu 6 gleichzeitig im Helion-System (bis 0.12.0: 4 [ORIGINAL]); [Vorgabe 0.14.0] gemeinsam für beide Feindsysteme
 ## [Vorgabe 0.12.0] Fighter je Schwadron × Faktor (längere Kämpfe). Orbit-Start, Empfangskomitee und
 ## Planetenverteidiger bleiben unverändert. Das Tempo der Schwadrone rechnet mit der Größe ohne Faktor.
 var squadron_fighter_factor := 2.0
@@ -331,10 +340,27 @@ var enemy_reinforce_max := 3                 ## [FREI, Vorgabe]
 var enemy_production_slowdown := 0.15   ## [FREI, Vorgabe "spürbar langsamer"] Abstand neuer Schwadrone +15 % je zerstörter Stadt …
 var enemy_production_ref_cities := 28   ## [Vorgabe 0.13.0] … bezogen auf 28 äußere Städte: bei mehr Städten (Fortgeschritten) wirkt
 										## jede einzelne entsprechend schwächer – die Bremse verläuft nach dem Anteil zerstörter Städte
-var enemy_system_max_squadrons := 3     ## [FREI] höchstens so viele Schwadrone gleichzeitig im Feindsystem unterwegs
+var enemy_system_max_squadrons := 3     ## [FREI] höchstens so viele Schwadrone gleichzeitig in einem Feindsystem unterwegs (je System)
 var enemy_transit_speed_factor := 2.5   ## [FREI] im eigenen System fliegen Schwadrone schneller (Transit zum Sprungpunkt)
 var enemy_first_launch := 25.0          ## [FREI] erster Start im Feindsystem nach Beginn der Kampagne (s)
 var bonus_victory := 0                  ## [später] Siegbonus/Militär-Rang – wird nach den Tests festgelegt
+
+# ---------------------------------------------------------------------------------------------
+#  Zweites Feindsystem [Vorgabe 0.14.0] (Hart/Experte): 4 Planeten (Heimatwelt + 3 äußere), eigener Stern,
+#  KEIN Empfangskomitee, nur über Helion erreichbar (Sprungpunkt unten rechts, Sprung wie nach Vorrhal).
+#  Produktion, Verteidiger und Bomben wie in Vorrhal. Beide Systeme teilen sich die Grenze max_squadrons in Helion:
+#  am Sprungpunkt wartende Schwadrone springen in der Reihenfolge ihrer Ankunft, egal aus welchem System.
+#  Sieg erst, wenn auch dort alle Städte zerstört sind.
+# ---------------------------------------------------------------------------------------------
+var second_system_mode := 0             ## [Vorgabe] von der Stufe gesetzt: 0 = kein zweites Feindsystem; 1 = es greift an, sobald Vorrhal
+										## keine Schwadrone mehr bauen kann (Hart); 2 = zusätzlich, sobald in Helion erstmals
+										## second_system_empty_time Sekunden lang kein feindliches Schwadron ist (Experte; was zuerst eintritt)
+var second_system_empty_time := 60.0    ## [Vorgabe] Experte: so lange (s, Strategiezeit) ohne feindliches Schwadron in Helion
+var second_city_count_min := 15         ## [Vorgabe "wie Fortgeschritten"] Städte der 3 äußeren Planeten …
+var second_city_count_max := 17         ## [Vorgabe]
+var second_home_city_count := 20        ## [Vorgabe] … und der Heimatwelt (Einsatzgebiet wie in Vorrhal × enemy_planet_area_factor)
+var second_first_launch := 25.0         ## [FREI] erster Schwadron-Start dort nach dem Erwachen (s)
+var squadron_speed_factor := 1.0        ## [Vorgabe 0.14.0] Tempo aller Schwadrone × Faktor (von der Stufe gesetzt: Hart/Experte 1,1)
 
 # ---------------------------------------------------------------------------------------------
 #  Bomben  (nur auf Feindplaneten; Waffenwechsel Bordlaser ↔ Bomben manuell mit Q/Tab/X)
@@ -437,11 +463,13 @@ func _load_overrides() -> void:
 
 
 ## Schwierigkeitsstufe übernehmen (Settings.apply): setzt die Werte der Stufe, außer balance.cfg-Schlüsseln.
+## Schlüssel, die nur andere Stufen setzen, gehen auf ihren Standardwert zurück (z. B. squadron_speed_factor nach Hart).
 func apply_difficulty(idx: int) -> void:
 	var lvl: Dictionary = difficulty_level(idx)
-	for key in lvl.values:
-		if not _overridden.has(key):
-			set(key, _copy(lvl.values[key]))
+	for l in DIFFICULTY_LEVELS:
+		for key in l.values:
+			if not _overridden.has(key):
+				set(key, _copy(lvl.values[key] if lvl.values.has(key) else _defaults[key]))
 
 
 func difficulty_level(idx: int) -> Dictionary:

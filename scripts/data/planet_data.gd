@@ -16,7 +16,8 @@ var city_variant: Array = []    ## int 0..2 (Modellvariante)
 var city_names: Array = []
 var landed_squadron := -1       ## Schwadron-ID, die gerade auf dem Planeten ist (-1 = keins)
 # Feindsystem
-var is_enemy := false           ## Planet des Feindsystems (Städte werden vom Spieler zerbombt)
+var is_enemy := false           ## Planet eines Feindsystems (Städte werden vom Spieler zerbombt)
+var system := 0                 ## 0 = Helion, 1 = Vorrhal, 2 = zweites Feindsystem (id = Index innerhalb des Systems)
 var defenders := 0              ## verbleibende Verteidiger-Fighter (keine Regeneration)
 var area_radius := 0.0          ## Einsatzgebiet (m); 0 = Config.planet_area_radius (Feindplaneten: × enemy_planet_area_factor)
 var defenders_initial := 0

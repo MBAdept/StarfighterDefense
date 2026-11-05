@@ -215,11 +215,13 @@ func _set_city_model(i: int, alive: bool) -> void:
 	if alive:
 		var b := Assets.find_node_named(m, "Beacon")
 		if b:
-			var g := Assets.glow_sprite(Color(1.0, 0.18, 0.5) if enemy_mode else Color(1.0, 0.3, 0.25), 5.0, 4.0)
+			# Feindstädte magenta, im zweiten Feindsystem violett
+			var bcol := (Color(0.62, 0.36, 1.0) if planet.system == 2 else Color(1.0, 0.18, 0.5)) if enemy_mode else Color(1.0, 0.3, 0.25)
+			var g := Assets.glow_sprite(bcol, 5.0, 4.0)
 			b.add_child(g)
 			city_beacons.append(g)
 		var l := OmniLight3D.new()
-		l.light_color = Color(1.0, 0.35, 0.6) if enemy_mode else Color(1.0, 0.8, 0.55)
+		l.light_color = (Color(0.68, 0.52, 1.0) if planet.system == 2 else Color(1.0, 0.35, 0.6)) if enemy_mode else Color(1.0, 0.8, 0.55)
 		l.light_energy = 1.2
 		l.omni_range = 45.0
 		l.position = Vector3(0, 12, 0)
@@ -968,9 +970,13 @@ func _on_enemy_city_destroyed(p: PlanetData, idx: int) -> void:
 	if GameState.game_over or GameState.victory_cities_left() == 0:
 		return
 	if left == 0:
-		var rest := GameState.enemy_cities_alive()   # tatsächlich verbleibende Städte im System
+		var sys := maxi(planet.system, 1)
+		var rest := GameState.enemy_cities_alive(sys)   # tatsächlich verbleibende Städte in diesem System
 		var sub := "Noch %s im Feindsystem · LEERTASTE: Feindkarte" % UITheme.cities_text(rest)
-		if not planet.is_home:
+		if rest == 0:
+			# [0.14.0] dieses System ist erledigt, der Sieg verlangt noch das andere
+			sub = "%s-System ausgeschaltet · noch %s bis zum Sieg" % [GameState.star_name(sys), UITheme.cities_text(GameState.victory_cities_left())]
+		elif not planet.is_home:
 			sub = "Von hier starten keine Schwadrone mehr · noch %s im System" % UITheme.cities_text(rest)
 			if not Config.victory_all_enemy_cities:
 				sub += " · Heimatwelt: noch %s bis zum Sieg" % UITheme.cities_text(GameState.victory_cities_left())

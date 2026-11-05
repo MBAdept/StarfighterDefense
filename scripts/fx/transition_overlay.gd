@@ -69,11 +69,16 @@ func fade(mid: Callable, out_time := 0.4, in_time := 0.5) -> void:
 
 const TINT_NORMAL := Vector3(0.55, 0.8, 1.0)
 const TINT_ENEMY := Vector3(1.0, 0.5, 0.4)   ## [Vorgabe] rötlicher Hyperraum zwischen den Systemen (fotosicher: kein gesättigtes Rot)
+## [0.14.0] violett beim Sprung vom/ins zweite Feindsystem – Leuchtdichte wie TINT_ENEMY bzw. dessen Blende
+const TINT_ENEMY2 := Vector3(0.72, 0.52, 1.0)
+const FLASH_ENEMY := Vector3(1.0, 0.55, 0.45)
+const FLASH_ENEMY2 := Vector3(0.74, 0.58, 1.0)
 
 
 ## Hyperraumsprung: Streifen beschleunigen, Weißblitz (Szenenwechsel), Ankunft.
-## long = Sprung zwischen Helion- und Feindsystem: Config.enemy_jump_duration_factor × so lang, rot.
-func hyperjump(mid: Callable, done: Callable = Callable(), long := false) -> void:
+## long = Sprung zwischen Helion- und einem Feindsystem: Config.enemy_jump_duration_factor × so lang, rot
+## (second = vom/ins zweite Feindsystem: violett).
+func hyperjump(mid: Callable, done: Callable = Callable(), long := false, second := false) -> void:
 	if _tween:
 		_tween.kill()
 	var d := Config.jump_duration * (Config.enemy_jump_duration_factor if long else 1.0)
@@ -83,8 +88,8 @@ func hyperjump(mid: Callable, done: Callable = Callable(), long := false) -> voi
 	_set_param("intensity", 0.0)
 	_set_param("flash", 0.0)
 	_set_param("fade", 0.0)
-	(hyper.material as ShaderMaterial).set_shader_parameter("tint", TINT_ENEMY if long else TINT_NORMAL)
-	(hyper.material as ShaderMaterial).set_shader_parameter("flash_color", Vector3(1.0, 0.55, 0.45) if long else Vector3(1.0, 1.0, 1.0))
+	(hyper.material as ShaderMaterial).set_shader_parameter("tint", (TINT_ENEMY2 if second else TINT_ENEMY) if long else TINT_NORMAL)
+	(hyper.material as ShaderMaterial).set_shader_parameter("flash_color", (FLASH_ENEMY2 if second else FLASH_ENEMY) if long else Vector3(1.0, 1.0, 1.0))
 	hyper.visible = true
 	if long:
 		Audio.sfx("hyperjump_long" if Audio.has_sound("hyperjump_long") else "hyperjump", -1.0, 1.0 if Audio.has_sound("hyperjump_long") else 0.62)
