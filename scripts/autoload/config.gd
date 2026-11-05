@@ -37,8 +37,10 @@ var difficulty_scale := 1.0             ## [FREI] von der Schwierigkeitsstufe ge
 ## und gilt für die ganze Partie (eine Änderung mitten im Spiel wirkt ab der nächsten). Ausnahme: Schlüssel, die eine
 ## balance.cfg auf einen anderen Wert als den Standard setzt – die gehen vor. Jede Stufe hat eine eigene
 ## Highscore-Liste ("key").
-## [Vorgabe 0.14.0] Hart und Experte: wie Fortgeschritten, Schwadrone 10 % schneller und ein zweites Feindsystem
-## (siehe „Zweites Feindsystem“ weiter unten). Schlüssel, die eine Stufe nicht nennt, gelten mit ihrem Standardwert.
+## [Vorgabe 0.14.0/0.14.1] Hart und Experte: wie Fortgeschritten, Schwadrone in Helion 10 % schneller und ein zweites,
+## kleineres Feindsystem (siehe „Zweites Feindsystem“ weiter unten). Schlüssel, die eine Stufe nicht nennt, gelten mit
+## ihrem Standardwert. In "desc" werden {empty_time} und {empty_max} durch die aktuellen Auslöserwerte ersetzt
+## (difficulty_desc), damit der Text auch mit einer balance.cfg stimmt.
 const DIFFICULTY_LEVELS := [
 	{"key": "kinderspiel", "name": "Kinderspiel",
 		"desc": "Weniger Schaden, langsamere und seltenere Schwadrone (bis 0.12.0 „Leicht“)",
@@ -57,11 +59,11 @@ const DIFFICULTY_LEVELS := [
 		"values": {"difficulty_scale": 1.0, "initial_squadrons": 4, "enemy_city_count_min": 15, "enemy_city_count_max": 17,
 			"enemy_home_city_count": 20, "enemy_planet_area_factor": 1.45}},
 	{"key": "hart", "name": "Hart",
-		"desc": "Wie Fortgeschritten, Schwadrone 10 % schneller – kann Vorrhal keine Schwadrone mehr bauen, greift ein zweites Feindsystem an",
+		"desc": "Wie Fortgeschritten, Schwadrone in Helion 10 % schneller – kann Vorrhal keine Schwadrone mehr bauen, greift ein zweites, kleineres Feindsystem an",
 		"values": {"difficulty_scale": 1.0, "initial_squadrons": 4, "enemy_city_count_min": 15, "enemy_city_count_max": 17,
 			"enemy_home_city_count": 20, "enemy_planet_area_factor": 1.45, "squadron_speed_factor": 1.1, "second_system_mode": 1}},
 	{"key": "experte", "name": "Experte",
-		"desc": "Wie Hart – das zweite Feindsystem greift aber schon an, sobald Helion erstmals 60 s lang frei von Schwadronen ist",
+		"desc": "Wie Hart – das zweite Feindsystem greift aber schon an, sobald in Helion erstmals {empty_time} s lang {empty_max} unterwegs ist",
 		"values": {"difficulty_scale": 1.0, "initial_squadrons": 4, "enemy_city_count_min": 15, "enemy_city_count_max": 17,
 			"enemy_home_city_count": 20, "enemy_planet_area_factor": 1.45, "squadron_speed_factor": 1.1, "second_system_mode": 2}},
 ]
@@ -119,6 +121,9 @@ var refuel_rate := 10.0                 ## [ORIGINAL] ca. 10 % pro Sekunde …
 var refuel_step := 5.0                  ## [ORIGINAL] … sichtbar in 5-%-Schritten
 var station_damage_per_fighter := 0.07  ## [FREI] % Stationsintegrität pro Sekunde und angreifendem Fighter (ohne squadron_fighter_factor gezählt)
 var station_can_be_destroyed := true    ## [FREI] unverteidigte Stationen können zerstört werden
+## [FREI 0.14.1] Sind ALLE Stationen zerstört, wird nach so vielen Sekunden (Strategiezeit) eine wieder aufgebaut –
+## sonst gäbe es nie wieder Bomben und eine Partie mit Feindstädten ließe sich nicht mehr gewinnen. 0 = nie.
+var station_rebuild_time := 180.0
 
 # ---------------------------------------------------------------------------------------------
 #  Spielerschiff / Steuerung
@@ -354,13 +359,19 @@ var bonus_victory := 0                  ## [später] Siegbonus/Militär-Rang –
 # ---------------------------------------------------------------------------------------------
 var second_system_mode := 0             ## [Vorgabe] von der Stufe gesetzt: 0 = kein zweites Feindsystem; 1 = es greift an, sobald Vorrhal
 										## keine Schwadrone mehr bauen kann (Hart); 2 = zusätzlich, sobald in Helion erstmals
-										## second_system_empty_time Sekunden lang kein feindliches Schwadron ist (Experte; was zuerst eintritt)
-var second_system_empty_time := 60.0    ## [Vorgabe] Experte: so lange (s, Strategiezeit) ohne feindliches Schwadron in Helion
-var second_city_count_min := 15         ## [Vorgabe "wie Fortgeschritten"] Städte der 3 äußeren Planeten …
-var second_city_count_max := 17         ## [Vorgabe]
-var second_home_city_count := 20        ## [Vorgabe] … und der Heimatwelt (Einsatzgebiet wie in Vorrhal × enemy_planet_area_factor)
+										## second_system_empty_time Sekunden lang höchstens second_system_empty_max feindliche Schwadrone
+										## sind (Experte; was zuerst eintritt)
+var second_system_empty_time := 60.0    ## [Vorgabe] Experte: so lange (s, Strategiezeit, am Stück) …
+var second_system_empty_max := 1        ## [Vorgabe 0.14.1] … höchstens so viele feindliche Schwadrone in Helion (0.14.0: keins –
+										## griff in den Messungen nie; mit 30 s und höchstens einem griff er einmal schon nach 6 min)
+var second_city_count_min := 8          ## [Vorgabe 0.14.1] Städte der 3 äußeren Planeten (0.14.0: 15–17) …
+var second_city_count_max := 10         ## [Vorgabe 0.14.1]
+var second_home_city_count := 12        ## [Vorgabe 0.14.1] … und der Heimatwelt (0.14.0: 20)
+var second_planet_area_factor := 1.0    ## [FREI 0.14.1] Einsatzgebiet der Ixmora-Planeten × Faktor (weniger Städte: Standardgröße, 0.14.0: 1,45)
 var second_first_launch := 25.0         ## [FREI] erster Schwadron-Start dort nach dem Erwachen (s)
-var squadron_speed_factor := 1.0        ## [Vorgabe 0.14.0] Tempo aller Schwadrone × Faktor (von der Stufe gesetzt: Hart/Experte 1,1)
+var second_transit_speed_factor := 0.8  ## [Vorgabe 0.14.1] Schwadrone in Ixmora (Weg zum Sprungpunkt) 20 % langsamer
+var squadron_speed_factor := 1.0        ## [Vorgabe 0.14.1] Tempo der Schwadrone in Helion × Faktor (von der Stufe gesetzt: Hart/Experte 1,1;
+										## 0.14.0: in allen Systemen)
 
 # ---------------------------------------------------------------------------------------------
 #  Bomben  (nur auf Feindplaneten; Waffenwechsel Bordlaser ↔ Bomben manuell mit Q/Tab/X)
@@ -474,6 +485,13 @@ func apply_difficulty(idx: int) -> void:
 
 func difficulty_level(idx: int) -> Dictionary:
 	return DIFFICULTY_LEVELS[clampi(idx, 0, DIFFICULTY_LEVELS.size() - 1)]
+
+
+## Beschreibung einer Stufe mit den aktuellen Auslöserwerten (Experte; auch mit balance.cfg richtig).
+func difficulty_desc(idx: int) -> String:
+	var n := second_system_empty_max
+	var what := "kein Schwadron" if n <= 0 else ("höchstens ein Schwadron" if n == 1 else "höchstens %d Schwadrone" % n)
+	return str(difficulty_level(idx).desc).replace("{empty_time}", str(int(round(second_system_empty_time)))).replace("{empty_max}", what)
 
 
 func _write_template() -> void:

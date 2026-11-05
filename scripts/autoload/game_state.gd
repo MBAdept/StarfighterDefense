@@ -109,11 +109,13 @@ var enemy2_planets: Array = []  ## [0.14.0] PlanetData des zweiten Feindsystems 
 var enemy2_squadrons: Array = []   ## [0.14.0] SquadronData im zweiten Feindsystem
 var second_active := false      ## [0.14.0] das zweite Feindsystem greift an (erst dann sichtbar und erreichbar)
 var second_awake_time := -1.0   ## Strategiezeit des Erwachens (Auswertung)
-var second_reason := ""         ## "production" (Vorrhal baut nichts mehr) | "empty" (Helion 60 s frei, Experte)
+var second_reason := ""         ## "production" (Vorrhal baut nichts mehr) | "empty" (Experte: Helion second_system_empty_time s
+								## lang mit höchstens second_system_empty_max Schwadronen) | "test"
 var production2_progress := 0.0 ## wie production_progress, für das zweite Feindsystem
 var _production2_stop_logged := false
-var _helion_empty_t := 0.0      ## Experte: Strategiezeit ohne feindliches Schwadron in Helion (am Stück)
+var _helion_empty_t := 0.0      ## Experte: Strategiezeit mit höchstens second_system_empty_max Schwadronen in Helion (am Stück)
 var second_banner_pending := "" ## Banner zum Angriff, nachzuholen (Karte offen / Hyperraumsprung); "" = keins
+var _station_rebuild_t := -1.0  ## [0.14.1] Strategiezeit bis zum Wiederaufbau einer Station (alle zerstört); < 0 = keiner
 var player_system := 0          ## 0 = Helion-System, 1 = Feindsystem Vorrhal, 2 = zweites Feindsystem
 var bombs := 15
 var reception_active := false   ## Empfangskomitee am Ankunftspunkt noch nicht abgewehrt
@@ -178,6 +180,7 @@ func new_game() -> void:
 	_production2_stop_logged = false
 	_helion_empty_t = 0.0
 	second_banner_pending = ""
+	_station_rebuild_t = -1.0
 	player_system = 0
 	bombs = Config.bombs_max
 	reception_active = false
@@ -301,7 +304,7 @@ func _create_enemy_system(sys: int, defs: Array, city_names: Array, out: Array) 
 		var dir := -1.0 if sys == 1 else 1.0   # Vorrhal im Gegenlauf zu Helion, das zweite System wieder rechtsherum
 		p.angular_speed = dir * TAU / lerpf(Config.orbit_period_inner, Config.orbit_period_outer, t)
 		p.seed = rng.randi()
-		p.area_radius = Config.planet_area_radius * maxf(Config.enemy_planet_area_factor, 0.5)
+		p.area_radius = Config.planet_area_radius * maxf(Config.second_planet_area_factor if sys == 2 else Config.enemy_planet_area_factor, 0.5)
 		var n := 0
 		if sys == 2:
 			n = Config.second_home_city_count if p.is_home else rng.randi_range(Config.second_city_count_min, maxi(Config.second_city_count_min, Config.second_city_count_max))
@@ -372,6 +375,7 @@ func _process(delta: float) -> void:
 		_update_enemy_squadron(esq, dt)
 	_update_transfers()
 	_update_second_system(dt)
+	_update_station_rebuild(dt)
 	_update_player_map_pos()
 	_changed_accum += dt
 	if _changed_accum > 0.2:
@@ -527,8 +531,10 @@ func _update_enemy_squadron(sq: SquadronData, dt: float) -> void:
 			sq.map_pos += to / dist * step
 
 
+## Tempo im eigenen Feindsystem (Weg zum Sprungpunkt); [Vorgabe 0.14.1] in Ixmora × second_transit_speed_factor.
 func enemy_squadron_speed(sq: SquadronData) -> float:
-	return _base_speed(sq) * Config.enemy_transit_speed_factor
+	var f := Config.enemy_transit_speed_factor * (Config.second_transit_speed_factor if sq.system == 2 else 1.0)
+	return _base_speed(sq) * f
 
 
 ## [Vorgabe 0.14.0] Beide Feindsysteme teilen sich die Grenze max_squadrons in Helion: Schwadrone an den Sprungpunkten
@@ -576,8 +582,9 @@ func _from_text(sys: int) -> String:
 #  Zweites Feindsystem [Vorgabe 0.14.0]
 # =============================================================================================
 ## Hart: das zweite Feindsystem greift an, sobald Vorrhal keine Schwadrone mehr bauen kann. Experte: zusätzlich schon,
-## wenn in Helion erstmals Config.second_system_empty_time Sekunden am Stück kein feindliches Schwadron ist (was zuerst
-## eintritt). dt = 0: nur die Produktionsbedingung prüfen (direkt nach einer zerstörten Feindstadt).
+## wenn in Helion erstmals Config.second_system_empty_time Sekunden am Stück höchstens Config.second_system_empty_max
+## feindliche Schwadrone sind (was zuerst eintritt). dt = 0: nur die Produktionsbedingung prüfen (direkt nach einer
+## zerstörten Feindstadt).
 func _update_second_system(dt: float) -> void:
 	if second_active or enemy2_planets.is_empty() or not running or game_over:
 		return
@@ -585,7 +592,7 @@ func _update_second_system(dt: float) -> void:
 		_awaken_second("production")
 		return
 	if Config.second_system_mode >= 2:
-		_helion_empty_t = _helion_empty_t + dt if squadrons.is_empty() else 0.0
+		_helion_empty_t = _helion_empty_t + dt if squadrons.size() <= Config.second_system_empty_max else 0.0
 		if _helion_empty_t >= Config.second_system_empty_time:
 			_awaken_second("empty")
 
@@ -616,7 +623,7 @@ func debug_awaken_second() -> void:
 		_awaken_second("test")
 
 
-## Sekunden ohne Schwadron in Helion (Experte-Auslöser), für die Anzeige; -1 = kein solcher Auslöser.
+## Sekunden mit (fast) freiem Helion (Experte-Auslöser), für die Anzeige; -1 = kein solcher Auslöser.
 func helion_empty_time() -> float:
 	if second_active or enemy2_planets.is_empty() or Config.second_system_mode < 2:
 		return -1.0
@@ -726,9 +733,10 @@ func is_squadron_stopped(sq: SquadronData) -> bool:
 	return fmod(sq.stop_clock, cycle) < Config.single_destroyer_stop_time
 
 
-## [ORIGINAL] Je kleiner das Schwadron, desto langsamer. Im Heimatsystem × squadron_speed_home_factor.
+## [ORIGINAL] Je kleiner das Schwadron, desto langsamer. Im Heimatsystem × squadron_speed_home_factor,
+## [Vorgabe 0.14.1] × squadron_speed_factor (Hart/Experte +10 % – nur hier in Helion).
 func squadron_speed(sq: SquadronData) -> float:
-	return _base_speed(sq) * Config.squadron_speed_home_factor
+	return _base_speed(sq) * Config.squadron_speed_home_factor * Config.squadron_speed_factor
 
 
 ## Grundtempo nach Stärke. Die Fighter zählen ohne squadron_fighter_factor, damit die größeren Schwadrone
@@ -737,7 +745,7 @@ func _base_speed(sq: SquadronData) -> float:
 	var f := float(sq.fighters) / maxf(Config.squadron_fighter_factor, 0.01)
 	var strength := f + 4.0 * sq.destroyers.size() + (2.0 if sq.has_flagship else 0.0)
 	var t := clampf(strength / Config.squadron_strength_ref, 0.0, 1.0)
-	return lerpf(Config.squadron_speed_min, Config.squadron_speed_max, t) * sqrt(Config.difficulty_scale) * Config.squadron_speed_factor
+	return lerpf(Config.squadron_speed_min, Config.squadron_speed_max, t) * sqrt(Config.difficulty_scale)
 
 
 func squadron_target_pos(sq: SquadronData) -> Vector2:
@@ -960,8 +968,56 @@ func _destroy_station(s: StationData) -> void:
 	s.destroyed = true
 	s.integrity = 0.0
 	s.attacker = -1
+	s.destroyed_at = sim_time
 	log_event("%s wurde zerstört!" % s.name, Sev.ALERT, "station_lost", s.id)
 	station_destroyed.emit(s)
+	if Config.station_rebuild_time > 0.0 and _station_rebuild_t < 0.0 and _all_stations_destroyed():
+		# [0.14.1] ohne Station gäbe es nie wieder Bomben (Sieg unmöglich): eine wird wieder aufgebaut
+		_station_rebuild_t = Config.station_rebuild_time
+		log_event("Alle Stationen zerstört! Eine wird wieder aufgebaut – in ca. %d Minuten." % maxi(int(round(Config.station_rebuild_time / 60.0)), 1), Sev.WARN, "", -1, true)
+
+
+func _all_stations_destroyed() -> bool:
+	if stations.is_empty():
+		return false
+	for st in stations:
+		if not st.destroyed:
+			return false
+	return true
+
+
+## Restzeit bis zum Wiederaufbau einer Station (s); -1 = keiner geplant (für die Anzeige).
+func station_rebuild_left() -> float:
+	return _station_rebuild_t
+
+
+## Station, die als nächste wieder aufgebaut wird (die zuerst zerstörte); null = keine.
+func station_rebuild_target() -> StationData:
+	if _station_rebuild_t < 0.0:
+		return null
+	var best: StationData = null
+	for st in stations:
+		if st.destroyed and (best == null or st.destroyed_at < best.destroyed_at):
+			best = st
+	return best
+
+
+func _update_station_rebuild(dt: float) -> void:
+	if _station_rebuild_t < 0.0:
+		return
+	_station_rebuild_t -= dt
+	if _station_rebuild_t > 0.0:
+		return
+	var best := station_rebuild_target()
+	_station_rebuild_t = -1.0
+	if best == null:
+		return
+	best.destroyed = false
+	best.integrity = 100.0
+	best.attacker = -1
+	best.destroyed_at = -1.0
+	log_event("%s ist wieder einsatzbereit – Energie, Bomben und Reparatur wieder möglich." % best.name, Sev.GOOD, "", -1, true)
+	changed.emit()
 
 
 ## Schwadron direkt im Helion-System am Sprungpunkt (Kampagnenstart, Testfunktionen, ohne Feindsystem).

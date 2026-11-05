@@ -19,7 +19,7 @@ var landed_squadron := -1       ## Schwadron-ID, die gerade auf dem Planeten ist
 var is_enemy := false           ## Planet eines Feindsystems (Städte werden vom Spieler zerbombt)
 var system := 0                 ## 0 = Helion, 1 = Vorrhal, 2 = zweites Feindsystem (id = Index innerhalb des Systems)
 var defenders := 0              ## verbleibende Verteidiger-Fighter (keine Regeneration)
-var area_radius := 0.0          ## Einsatzgebiet (m); 0 = Config.planet_area_radius (Feindplaneten: × enemy_planet_area_factor)
+var area_radius := 0.0          ## Einsatzgebiet (m); 0 = Config.planet_area_radius (Vorrhal: × enemy_planet_area_factor, Ixmora: × second_planet_area_factor)
 var defenders_initial := 0
 
 

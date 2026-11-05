@@ -24,7 +24,7 @@ Am Ende steht immer eine **Auswertung**: bei Sieg, Game Over und vorzeitigem Abb
 2. **Systemkarte (Leertaste)**: Ziel wählen (Planet, Station, Schwadron) und springen. Ein Sprung kostet Energie, je weiter, desto mehr (2,5–12 %).
 3. **Weltraumkampf**: Erst die Fighter (Bordlaser), danach die Zerstörer nacheinander (Ionen-Kanone). Sie stehen knapp außerhalb des Sichtfelds, also links oder rechts suchen. Ein Flaggschiff kann zusätzlich auftauchen.
 4. **Planetenkampf**: Die Zerstörer schweben über Städten und bombardieren sie. Im Scanner blinkt die bombardierte Stadt. Sind alle Zerstörer vernichtet, ist der Planet gerettet.
-5. **Raumstation**: Andocken, auftanken (10 %/s in 5-%-Schritten), **Bomben nachladen** und **Systemschäden reparieren**. Wird die Station angegriffen, erst die Fighter vernichten.
+5. **Raumstation**: Andocken, auftanken (10 %/s in 5-%-Schritten), **Bomben nachladen** und **Systemschäden reparieren**. Wird die Station angegriffen, erst die Fighter vernichten. Sind beide Stationen zerstört, wird eine nach 3 Minuten wieder aufgebaut (ab 0.14.1, Countdown auf der Karte).
 6. **Stern** (Helion, Vorrhal bzw. Ixmora, Kartenmitte): Energie fast sofort auffüllen, aber schnell wieder weg. Siehe „Sterne und Systemschäden“.
 7. **Feindsystem**: Siehe nächster Abschnitt.
 
@@ -58,10 +58,11 @@ Tipps:
 
 - **Wann es angreift**:
   - **Hart**: sobald Vorrhal **keine Schwadrone mehr bauen** kann, also alle Städte auf den äußeren Planeten Vorrhals zerstört sind.
-  - **Experte**: zusätzlich schon dann, wenn im Helion-System **erstmals 60 Sekunden lang kein feindliches Schwadron** unterwegs ist. Was zuerst eintritt, gilt. Ist Helion frei, zählt die Karte die Zeit bis zum Angriff herunter.
+  - **Experte**: zusätzlich schon dann, wenn im Helion-System **erstmals 60 Sekunden lang höchstens ein feindliches Schwadron** unterwegs ist (0.14.0: ohne jedes Schwadron). Was zuerst eintritt, gilt. Ist Helion so weit frei, zählt die Karte die Zeit bis zum Angriff herunter.
 - **Ankündigung**: Funkmeldung „ALARM: Ein zweites Feindsystem greift an“, kurzer Alarm und ein Banner im Cockpit. Bei offener Karte oder mitten im Hyperraumsprung kommen Banner und Alarm, sobald du wieder im Cockpit bist. Bei gestörter Kommunikation kann die Meldung verstümmelt sein oder fehlen. Die Karte zeigt den neuen Sprungpunkt trotzdem.
 - **Lage**: Galaxie **unten rechts** auf der Systemkarte, gegenüber von Vorrhal. Erreichbar **nur über Helion**: Es gibt keinen Sprung direkt zwischen Vorrhal und Ixmora. Hin- und Rücksprung kosten wie bei Vorrhal je 20 % und dauern dreimal so lange (violetter Hyperraum).
-- **Ixmora**: blauer Stern, **4 Planeten**: Heimatwelt **Thurxa** mit 20 Städten, dazu **Ilvesh** (Gletscherwelt), **Gorrakh** (Magmawelt) und **Seyth** (Leuchtwelt) mit je 15–17 Städten. Der Rücksprungpunkt nach Helion liegt dort **oben links**.
+- **Ixmora**: blauer Stern, **4 Planeten**: Heimatwelt **Thurxa** mit 12 Städten, dazu **Ilvesh** (Gletscherwelt), **Gorrakh** (Magmawelt) und **Seyth** (Leuchtwelt) mit je 8–10 Städten, zusammen 36–42 (0.14.0: rund 68). Das Einsatzgebiet hat die normale Größe. Der Rücksprungpunkt nach Helion liegt dort **oben links**.
+- **Tempo**: Auf Hart und Experte fliegen die Schwadrone **in Helion 10 % schneller**, in Vorrhal normal und **in Ixmora 20 % langsamer** zum Sprungpunkt (0.14.0: überall 10 % schneller).
 - **Kein Empfangskomitee.** Verteidiger, Verstärkung, Bomben und Produktion funktionieren wie in Vorrhal. Am Stern Ixmora kann man ebenfalls schnell tanken.
 - **Gemeinsame Grenze**: Beide Feindsysteme teilen sich die Grenze von **6 Schwadronen im Helion-System**. Warten an beiden Sprungpunkten Schwadrone, springt zuerst, wer am längsten wartet. Schwadrone aus Ixmora tauchen in Helion unten rechts auf.
 - **Q/Tab auf der Karte** blättert durch Helion, Vorrhal und Ixmora (nur Ansicht). Springen kannst du nur im eigenen System.
@@ -77,14 +78,14 @@ Die Stufe wählst du unter **Optionen → Schwierigkeit**. Das Titelbild zeigt d
 | Anfänger | 2 | 6–8, Heimatwelt 12 | wie bis 0.12.0 „Normal“ |
 | Normal | 3 | 6–8, Heimatwelt 12 | – |
 | Fortgeschritten | 4 | 15–17, Heimatwelt 20 | Städte weiter über die Oberfläche verteilt: Radius des Einsatzgebiets 45 % größer |
-| Hart (ab 0.14.0) | 4 | 15–17, Heimatwelt 20 | wie Fortgeschritten, Schwadrone 10 % schneller. Kann Vorrhal keine Schwadrone mehr bauen, greift Ixmora an |
-| Experte (ab 0.14.0) | 4 | 15–17, Heimatwelt 20 | wie Hart, Ixmora greift aber schon an, sobald Helion erstmals 60 s lang frei von Schwadronen ist |
+| Hart (ab 0.14.0) | 4 | Vorrhal 15–17, Heimatwelt 20; Ixmora 8–10, Heimatwelt 12 | wie Fortgeschritten, Schwadrone in Helion 10 % schneller. Kann Vorrhal keine Schwadrone mehr bauen, greift Ixmora an |
+| Experte (ab 0.14.0) | 4 | wie Hart | wie Hart, Ixmora greift aber schon an, sobald in Helion erstmals 60 s lang höchstens ein Schwadron unterwegs ist |
 
 - In **allen Stufen** sind jetzt bis zu **6 Schwadrone** gleichzeitig im Helion-System unterwegs (bis 0.12.0: 4).
 - Die Nachschub-Bremse richtet sich nach dem **Anteil** zerstörter Städte auf den äußeren Feindplaneten. Bei 28 äußeren Städten wirkt sie wie bisher (+15 % Abstand je Stadt), bei mehr Städten wirkt jede einzelne entsprechend schwächer, bei weniger stärker.
 - Die Stufe gilt für die ganze Partie und lässt sich nur im Hauptmenü ändern. Im Spiel ist sie in den Optionen gesperrt, denn die Punkte zählen für die Highscore-Liste der Stufe, mit der die Partie begann.
 - Die bisherige Stufe „Schwer“ (130 % Gegnerschaden) entfällt. Wer sie gespeichert hatte, spielt jetzt „Normal“.
-- Auf **Hart** und **Experte** gilt der Sieg erst, wenn die Städte **beider** Feindsysteme zerbombt sind, zusammen rund 150.
+- Auf **Hart** und **Experte** gilt der Sieg erst, wenn die Städte **beider** Feindsysteme zerbombt sind, zusammen rund 120.
 - Die bisherige Highscore-Liste (eine für alle) steht jetzt unter **Anfänger**, das war der bisherige Standard „Normal“.
 - Eine `balance.cfg` geht den Stufen vor, wenn sie einen Wert **abweichend vom Standard** setzt. Setzt sie z. B. `initial_squadrons=5`, gilt das in jeder Stufe. Eine unveränderte Kopie der `balance_template.cfg` schaltet die Stufen dagegen nicht ab.
 
@@ -258,6 +259,13 @@ Dort liegen auch `highscores.json` und `settings.cfg`.
 
 Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automatische Waffenwahl, 9/12 Fighter im Orbit, die [VERMUTET]-Regel „Schwadron mit nur einem Zerstörer bleibt zeitweise stehen“, Scanner-Ausrichtung, Randpfeile, Retro-Filter und die Cockpit-Ansicht. Die Schwierigkeit lässt sich nur im Hauptmenü ändern.
 
+## Änderungen in Version 0.14.1 – Hart und Experte entschärft
+
+- **Ixmora kleiner**: 8–10 Städte je äußerem Planeten, Heimatwelt 12 (vorher 15–17 bzw. 20), normales Einsatzgebiet (`second_city_count_min/max`, `second_home_city_count`, `second_planet_area_factor`).
+- **Weniger Druck**: Die +10 % Schwadron-Tempo von Hart/Experte gelten nur noch in Helion (`squadron_speed_factor`). In Ixmora fliegen die Schwadrone 20 % langsamer zum Sprungpunkt (`second_transit_speed_factor=0.8`), in Vorrhal normal.
+- **Kein Festfahren ohne Stationen**: Sind beide Stationen zerstört, wird die zuerst zerstörte nach 3 Minuten wieder aufgebaut (`station_rebuild_time`, 0 = nie). Bisher gab es dann nie wieder Bomben: Die Partie ließ sich nicht mehr gewinnen und lief, sobald kein Nachschub mehr kam, endlos weiter. In den Messungen von 0.14.0/0.14.1 fielen in 5 Partien auf Hart/Experte beide Stationen; 3 davon liefen ohne Ergebnis bis zum Abbruch nach 150 Minuten.
+- **Experte-Auslöser gelockert**: Ixmora greift an, sobald in Helion erstmals 60 Sekunden lang höchstens ein Schwadron unterwegs ist (vorher: ohne jedes Schwadron; `second_system_empty_time`, `second_system_empty_max`) – oder wie bisher beim Produktionsstopp von Vorrhal. Der Kartenhinweis zeigt den Countdown auch bei einem verbliebenen Schwadron. Gemessen wurden drei Varianten: „30 s ohne Schwadron“ griff nie, „30 s mit höchstens einem“ einmal schon nach 6 Minuten (Partie verloren), „60 s mit höchstens einem“ gelegentlich mitten im Spiel.
+
 ## Änderungen in Version 0.14.0 – Zweites Feindsystem, Stufen Hart und Experte
 
 - **Neue Stufen Hart und Experte**: wie Fortgeschritten, Schwadrone 10 % schneller, dazu das zweite Feindsystem **Ixmora**. Details siehe „Das zweite Feindsystem Ixmora“.
@@ -379,6 +387,16 @@ Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automati
 ## Stand / offene Punkte
 
 - **Militär-Rang und Siegbonus** folgen nach deinen Tests. Vorgesehen ist `bonus_victory` in `config.gd`, derzeit 0.
+- **Messung 0.14.1** (Hart und Experte nach der Entschärfung; Experte mit dem Auslöser „60 s, höchstens ein Schwadron“), sonst wie bei 0.14.0. Spielzeit bis zum Sieg in Minuten:
+
+  | Stufe | Angriff | vorsichtig | ungeduldig |
+  |---|---|---|---|
+  | Hart | 40 und 52 (41 bzw. 60 von ~80 Städten verloren); 1 Partie verloren (nach 38 Minuten) | 72 und 102 (3 bzw. 4 verloren) | 80 und 111 (46 bzw. 64 verloren) |
+  | Experte | 39 und 43 (26 bzw. 15 verloren) | 106 (0 verloren); 1 Partie nach 150 Minuten offen | 93, 93 und 94 (48–69 verloren) |
+
+  - Gegenüber 0.14.0 gewinnt der vorsichtige Testfahrer auf Hart jetzt (vorher 2 von 3 Partien festgefahren), der ungeduldige gewinnt alle Partien (vorher 1 von 3).
+  - Ixmora griff auf Experte einmal schon nach 30 Minuten über den neuen Auslöser an, sonst nach 23–102 Minuten über den Produktionsstopp von Vorrhal.
+  - Eine weitere Hart-Partie lief vor der Behebung in den Stations-Stillstand (beide Stationen zerstört, 116 von 121 Feindstädten zerbombt). Seit dem Wiederaufbau einer Station kann das nicht mehr passieren.
 - **Messung 0.14.0** (Hart und Experte) mit dem menschenähnlichen Testfahrer, Abbruch nach 150 Minuten Spielzeit. „Angriff“ = Sturmangriff (`--raid`), „vorsichtig“ = Verteidigung zuerst (`--raid_safe`), „ungeduldig“ = Verteidigung zuerst, aber nach 8 Minuten ohne Angriff greift er trotzdem an (`--raid_safe --raid_patience=480`). Spielzeit bis zum Sieg in Minuten:
 
   | Stufe | Angriff | vorsichtig | ungeduldig |
@@ -390,7 +408,7 @@ Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automati
   - Ixmora griff in allen Partien an, sobald Vorrhal keine Schwadrone mehr baute, meist nach 22–72 Minuten. Der 60-Sekunden-Auslöser von Experte kam in den Messungen nie zum Zug: Vorrhal liefert ständig nach, der Testfahrer räumt Helion nie so lange leer.
   - Auf Hart und Experte ist Helion fast ständig voll (6 Schwadrone). Wer nur verteidigt, kommt kaum zum Angriff. Wer angreift, verliert viele eigene Städte. Beide Stufen sind damit deutlich schwerer und länger als Fortgeschritten.
   - Drei von 23 beschleunigten Testläufen stürzten im bekannten Engine-Fehler des Audio-Mischthreads ab (gleiche Signatur wie 0.10.2). Er tritt nur bei über 1000 fps auf, in den langen, kampfreichen Partien auf Hart/Experte entsprechend öfter. Die Läufe wurden wiederholt. Im Spiel begrenzt `max_fps` (240) das Risiko.
-  - Einstellschrauben: Städte von Ixmora `second_city_count_min/max`, `second_home_city_count`; Tempo `squadron_speed_factor`; Experte-Auslöser `second_system_empty_time`.
+  - Einstellschrauben (Stand 0.14.1): Städte von Ixmora `second_city_count_min/max`, `second_home_city_count`; Tempo in Helion `squadron_speed_factor`, in Ixmora `second_transit_speed_factor`; Experte-Auslöser `second_system_empty_time`, `second_system_empty_max`.
 - **Messung 0.13.0** je Schwierigkeitsstufe mit dem menschenähnlichen Testfahrer. „Vorsichtig“ = Verteidigung zuerst (`--raid_safe`), „Angriff“ = Sturmangriff (`--raid`). Spielzeit in Minuten:
 
   | Stufe | vorsichtig | verlorene Städte | Angriff | verlorene Städte |

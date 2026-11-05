@@ -695,6 +695,9 @@ func _draw_front() -> void:
 		if s.destroyed:
 			var dp := to_screen(s.map_pos())
 			_text(f, dp + Vector2(-60, 6), "✕ " + s.name, _f_body, 16, Color(0.5, 0.5, 0.55, 0.6), HORIZONTAL_ALIGNMENT_CENTER, 120)
+			if s == GameState.station_rebuild_target():
+				# [0.14.1] alle Stationen zerstört: diese wird wieder aufgebaut
+				_text(f, dp + Vector2(-90, 26), "Wiederaufbau in %s" % GameState.format_time(ceilf(GameState.station_rebuild_left())), _f_body, 15, Color(UITheme.AMBER, 0.85), HORIZONTAL_ALIGNMENT_CENTER, 180)
 			continue
 		_draw_station_icon(f, s)
 	# Schwadrone (kleine Rechtecke)  [ORIGINAL]
@@ -745,9 +748,12 @@ func _draw_front() -> void:
 		by += 30.0
 	var empty_t := GameState.helion_empty_time()
 	if empty_t > 0.0 and GameState.running:
-		# [0.14.0] Experte: Helion frei von Schwadronen – nach Config.second_system_empty_time greift das zweite Feindsystem an
+		# [0.14.0] Experte: Helion (fast) frei von Schwadronen – nach Config.second_system_empty_time greift das zweite
+		# Feindsystem an
 		var left_t := maxf(Config.second_system_empty_time - empty_t, 0.0)
-		_text(f, Vector2(0, by), "HELION FREI – IN %s GREIFT EIN ZWEITES FEINDSYSTEM AN" % GameState.format_time(ceilf(left_t)), _f_disp, 19, Color(UITheme.AMBER, 0.85), HORIZONTAL_ALIGNMENT_CENTER, vp.x - PANEL_W)
+		var cnt := GameState.squadrons.size()
+		var what := "HELION FREI" if cnt == 0 else ("NUR NOCH %d SCHWADRON IN HELION" % cnt if cnt == 1 else "NUR NOCH %d SCHWADRONE IN HELION" % cnt)
+		_text(f, Vector2(0, by), "%s – IN %s GREIFT EIN ZWEITES FEINDSYSTEM AN" % [what, GameState.format_time(ceilf(left_t))], _f_disp, 19, Color(UITheme.AMBER, 0.85), HORIZONTAL_ALIGNMENT_CENTER, vp.x - PANEL_W)
 		by += 30.0
 	if GameState.is_at_star():
 		var hp := int(round(GameState.star_heat * 100.0))

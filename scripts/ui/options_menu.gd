@@ -62,13 +62,13 @@ func _ready() -> void:
 	(dopt as OptionButton).tooltip_text = _difficulty_help()
 	# [0.14.0] Beschreibung der Stufe sichtbar unter der Auswahl (auch für Tastatur/Gamepad, ohne Tooltip)
 	_row_label(grid, "")
-	var dl := UITheme.label(Config.difficulty_level(Settings.difficulty).desc, 18, UITheme.TEXT_DIM)
+	var dl := UITheme.label(Config.difficulty_desc(Settings.difficulty), 18, UITheme.TEXT_DIM)
 	dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	dl.custom_minimum_size = Vector2(520, 0)
 	grid.add_child(dl)
 	(dopt as OptionButton).item_selected.connect(func(_i):
 		(dopt as OptionButton).tooltip_text = _difficulty_help()
-		dl.text = Config.difficulty_level(Settings.difficulty).desc)
+		dl.text = Config.difficulty_desc(Settings.difficulty))
 	if GameState.in_game:
 		# die Stufe gilt für die ganze Partie (eigene Highscore-Liste) – nur im Hauptmenü änderbar
 		(dopt as OptionButton).disabled = true
@@ -149,7 +149,7 @@ func _choice(grid: GridContainer, text: String, key: String, labels: Array, valu
 ## Beschreibung der gewählten Stufe (Tooltip; Struktur der Stufe gilt ab der nächsten Partie).
 func _difficulty_help() -> String:
 	var lvl: Dictionary = Config.difficulty_level(Settings.difficulty)
-	return "%s: %s" % [lvl.name, lvl.desc]
+	return "%s: %s" % [lvl.name, Config.difficulty_desc(Settings.difficulty)]
 
 
 func _close() -> void:
