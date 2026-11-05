@@ -28,6 +28,7 @@ func _draw() -> void:
 	_draw_dashboard(vp)
 	_draw_top(vp)
 	_draw_docking(vp)
+	_draw_star_panel(vp)
 	_draw_messages(vp)
 
 
@@ -179,7 +180,9 @@ func _draw_bomb_sight(vp: Vector2) -> void:
 		else:
 			txt = "%d m" % int(Vector2(pc.impact_point.x, pc.impact_point.z).distance_to(pc.player_xz()))
 		_text(mp.pos + Vector2(46, 8), txt, _f_disp, 20, col)
-		if locked and not empty and fmod(_t, 0.5) < 0.35:
+		if GameState.has_damage("bombs"):
+			_text(c + Vector2(-200, 74), "BOMBENSCHACHT KLEMMT", _f_disp, 22, UITheme.RED, HORIZONTAL_ALIGNMENT_CENTER, 400)
+		elif locked and not empty and fmod(_t, 0.5) < 0.35:
 			_text(c + Vector2(-200, 74), "ABWURF: FEUER", _f_disp, 22, col, HORIZONTAL_ALIGNMENT_CENTER, 400)
 	elif _small.is_empty():   # weicht kleinen Meldungen (gleiche Stelle)
 		_text(c + Vector2(-300, 120), "AUFSCHLAG UNTER DEM SCHIFF – VORWÄRTS FLIEGEN", _f_body, 22, col, HORIZONTAL_ALIGNMENT_CENTER, 600)
@@ -224,11 +227,11 @@ func _draw_target_marker(_vp: Vector2) -> void:
 			var ch := f.charge_level()
 			var vul := f.is_vulnerable()
 			var bc := UITheme.PINK.lerp(Color(1, 1, 1), 0.5 if vul else 0.0)
-			var bs := 34.0 + (6.0 * sin(_t * 20.0) if vul else 0.0)
+			var bs := 34.0 + (6.0 * sin(_t * 12.0) if vul else 0.0)
 			draw_rect(Rect2(wp.pos - Vector2(bs, bs), Vector2(bs, bs) * 2.0), Color(bc, 0.95), false, 3.0 if vul else 1.5)
 			draw_rect(Rect2(wp.pos + Vector2(-bs, bs + 8.0), Vector2(bs * 2.0 * ch, 6.0)), bc)
 			draw_rect(Rect2(wp.pos + Vector2(-bs, bs + 8.0), Vector2(bs * 2.0, 6.0)), Color(bc, 0.5), false, 1.0)
-			if vul and fmod(_t, 0.3) < 0.2:
+			if vul and fmod(_t, 0.5) < 0.32:   # 2 Hz (fotosicher)
 				_text(wp.pos + Vector2(-bs, -bs - 12.0), "VERWUNDBAR!", _f_disp, 22, Color(1, 0.85, 0.97))
 
 
@@ -292,10 +295,11 @@ func _draw_popups() -> void:
 
 
 func _draw_hit_frame(vp: Vector2) -> void:
-	var a := clampf(1.0 - _hit_t * (1.5 if _hit_heavy else 3.0), 0.0, 1.0)
+	# langsames Abklingen: bei Dauerbeschuss (Rückmeldung höchstens alle 0,5 s) bleibt die Kante ruhig statt zu pulsieren
+	var a := clampf(1.0 - _hit_t * (1.2 if _hit_heavy else 1.6), 0.0, 1.0)
 	if a <= 0.0:
 		return
-	var col := Color(1.0, 0.25, 0.15, a * (0.55 if _hit_heavy else 0.3))
+	var col := Color(1.0, 0.55, 0.4, a * (0.55 if _hit_heavy else 0.3))   # kein gesättigtes Rot (fotosicher)
 	var w := 40.0 if _hit_heavy else 18.0
 	for i in 6:
 		var k := float(i) / 6.0
@@ -446,7 +450,10 @@ func _draw_bomb_weapon(o: Vector2, w: float, compact: bool, flash: float, mode: 
 		else:
 			draw_rect(r, Color(col, 0.35), false, 1.0)
 	var st := "LEER – Nachladen an Station" if empty else ("BEREIT · Abwurf mit FEUER · Q: Laser" if combat.bomb_cd <= 0.0 else "LÄDT … · Q: Laser")
-	_text(Vector2(o.x, bar_y + 34), st, _f_body, 18, Color(UITheme.RED if empty else UITheme.TEXT_DIM, 0.9))
+	var jam := GameState.has_damage("bombs")
+	if jam:
+		st = "KLEMMT – Reparatur an Station"
+	_text(Vector2(o.x, bar_y + 34), st, _f_body, 18, Color(UITheme.RED if empty or jam else UITheme.TEXT_DIM, 0.9))
 
 
 func _draw_status(o_right: Vector2, _vp: Vector2, _planet: bool) -> void:
@@ -470,6 +477,10 @@ func _draw_status(o_right: Vector2, _vp: Vector2, _planet: bool) -> void:
 func _draw_top(vp: Vector2) -> void:
 	_text(Vector2(40, 52), combat.location_name, _f_disp, 30, Color(UITheme.CYAN, 0.95))
 	_text(Vector2(40, 84), combat.location_sub, _f_body, 24, Color(UITheme.TEXT_DIM, 0.95))
+	var dl := _damage_line()
+	if dl != "":
+		# auf Planeten steht bei y = 112 der Bedienhinweis
+		_text(Vector2(40, 144.0 if combat is PlanetCombat else 116.0), dl, _f_disp, 20, Color(UITheme.RED.lightened(0.25), 0.85 + 0.15 * sin(_t * 2.5)))
 	_text(Vector2(0, 50), "%07d" % GameState.score, _f_mono, 40, Color(UITheme.TEXT, 0.9), HORIZONTAL_ALIGNMENT_CENTER, vp.x)
 	if GameState.running:
 		_text(Vector2(0, 76), "ZEIT %s  ·  STUFE %d" % [GameState.format_time(GameState.sim_time), GameState.level + 1], _f_body, 20, Color(UITheme.TEXT_DIM, 0.8), HORIZONTAL_ALIGNMENT_CENTER, vp.x)
@@ -533,6 +544,31 @@ func _draw_docking(vp: Vector2) -> void:
 	for i in steps:
 		var on := (i + 1) * Config.refuel_step <= GameState.energy + 0.01
 		draw_rect(Rect2(o + Vector2(24 + i * sw, 70), Vector2(sw - 4, 28)), Color(UITheme.GREEN, 0.9) if on else Color(UITheme.CYAN, 0.12))
+
+
+## Stern: Schnelltanken mit Hitzeanzeige (an der Stelle des Andock-Felds).
+func _draw_star_panel(vp: Vector2) -> void:
+	if GameState.player_loc != GameState.Loc.STAR:
+		return
+	var heat := GameState.star_heat
+	var hot := heat >= Config.star_heat_warning
+	var col := UITheme.RED if hot else UITheme.AMBER
+	var w := 620.0
+	var h := 150.0
+	var o := Vector2((vp.x - w) * 0.5, vp.y - 360.0)
+	draw_rect(Rect2(o, Vector2(w, h)), Color(0.08, 0.03, 0.01, 0.8))
+	draw_rect(Rect2(o, Vector2(w, h)), Color(col, 0.7), false, 2.0)
+	_text(o + Vector2(24, 40), "STERN %s" % GameState.star_name().to_upper(), _f_disp, 24, UITheme.AMBER)
+	_text(o + Vector2(w - 24 - 200, 44), "%d %%" % int(round(GameState.energy)), _f_mono, 36, UITheme.GREEN, HORIZONTAL_ALIGNMENT_RIGHT, 200)
+	_text(o + Vector2(24, 84), "HITZE", _f_disp, 18, col)
+	var bx := o.x + 120.0
+	var bw := w - 144.0
+	draw_rect(Rect2(Vector2(bx, o.y + 66), Vector2(bw, 22)), Color(col, 0.15))
+	draw_rect(Rect2(Vector2(bx, o.y + 66), Vector2(bw * heat, 22)), Color(col, 0.9))
+	var line := "Verglühen in %.1f s · LEERTASTE: Karte" % GameState.star_time_left()
+	if hot and fmod(_t, 0.5) < 0.32:   # langsames Blinken (2 Hz), kleine Fläche
+		line = "SOFORT SPRINGEN – LEERTASTE: Karte"
+	_text(o + Vector2(24, 126), line, _f_body, 22, col)
 
 
 # --- Planetenscanner ---------------------------------------------------------------------------

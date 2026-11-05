@@ -250,6 +250,7 @@ func request_jump(kind: int, id: int) -> void:
 	var long := GameState.is_cross_system(kind)
 	_jumping = true
 	_jump_target_pos = target_pos
+	GameState.leave_star()   # Absprung vom Stern: keine Hitze mehr
 	close_map(false)
 	GameState.pay_jump_to(kind, target_pos)
 	if GameState.game_over:
@@ -259,6 +260,7 @@ func request_jump(kind: int, id: int) -> void:
 		_enter_location(kind, id)
 	, func():
 		_jumping = false
+		GameState.jump_finished()   # Stern: Hitze erst, wenn der Spieler wieder handeln kann
 	, long)
 
 
@@ -277,6 +279,8 @@ func _loc_map_pos(kind: int, id: int) -> Vector2:
 			return GameState.enemy_planets[id].map_pos()
 		GameState.Loc.HOME_SYSTEM:
 			return GameState.ENEMY_GATE
+		GameState.Loc.STAR:
+			return GameState.STAR_POS
 	return GameState.player_map_pos
 
 
@@ -315,6 +319,10 @@ func _enter_location(kind: int, id: int) -> void:
 		GameState.Loc.ENEMY_PLANET:
 			GameState.set_player_location(GameState.Loc.ENEMY_PLANET, id)
 			_set_scene(PlanetCombat.create(GameState.enemy_planets[id]), State.PLANET)
+		GameState.Loc.STAR:
+			# [Vorgabe] Stern: Schnelltanken mit Hitze (Helion bzw. Vorrhal je nach System)
+			GameState.arrive_at_star()
+			_set_scene(SpaceCombat.create_star(), State.SPACE)
 		_:
 			GameState.set_player_location(GameState.Loc.SPACE, -1)
 			_set_scene(SpaceCombat.create_empty(), State.SPACE)
@@ -353,6 +361,11 @@ func open_pause() -> void:
 	if pause_menu:
 		return
 	get_tree().paused = true
+	if postfx:
+		# fotosicher: die Shader-Zeit läuft in der Pause weiter – Störstreifen eines Treffers nicht weiterlaufen lassen
+		(postfx.material as ShaderMaterial).set_shader_parameter("noise_lines", 0.0)
+	if scene is CombatBase:
+		(scene as CombatBase).clear_pending_hit_feedback()
 	pause_menu = PauseMenu.new()
 	pause_layer.add_child(pause_menu)
 	pause_menu.closed.connect(func():
@@ -505,6 +518,15 @@ func _run_test_scenario() -> void:
 			GameState.game_over = true
 			GameState.in_game = false
 			_set_scene(GameOverScreen.new(), State.GAME_OVER)
+		"star":
+			# Stern (Schnelltanken): --system=1 für Vorrhal, --energy=N Startenergie
+			GameState.start_campaign()
+			if _test.get("system", "0") == "1":
+				GameState.player_system = 1
+				GameState.reception_active = false
+			GameState.energy = float(_test.get("energy", "20"))
+			_enter_location(GameState.Loc.STAR, GameState.player_system)
+			GameState.jump_finished()   # ohne Hyperraum-Übergang
 		"enemy":
 			# Sprung ins Feindsystem: Empfangskomitee
 			GameState.start_campaign()
@@ -556,6 +578,24 @@ func _run_test_scenario() -> void:
 		await get_tree().create_timer(0.3).timeout
 		if scene is CombatBase:
 			(scene as CombatBase).weapon_manual = CombatBase.Weapon.BOMB
+	if _test.has("energy") and what != "star":
+		GameState.energy = float(_test["energy"])   # Testhilfe: Startenergie (z. B. unter 30 % für Systemschäden)
+	if _test.has("damage"):
+		# Testhilfe: Systemschaden setzen (bombs/screen/comms); --burst=S: Störungsstoß der Sichtstörung nach
+		# S Sekunden (für Bilder mitten im Stoß), --burst_kind=0 Schnee / 1 grüne Streifen
+		await get_tree().create_timer(0.2).timeout
+		GameState.set_damage(str(_test["damage"]))
+		if str(_test["damage"]) == "comms" and _test.has("comms_demo"):
+			# Testhilfe: einige Meldungen von außen (teils verloren, sonst verstümmelt) für Bilder von Ticker/DATENLINK
+			for t in ["Feindsystem: Schwadron Eta startet von Drauth.", "Neues feindliches Schwadron aus dem Feindsystem! Ziel: Station Beta",
+					"ALARM: Schwadron landet auf Morrow – Städte in Gefahr!", "Der Feind verstärkt seine Angriffe (Stufe 2).",
+					"Neues feindliches Schwadron aus dem Feindsystem! Ziel: Kryos", "ALARM: Station Alpha wird angegriffen!"]:
+				GameState.log_event(t, GameState.Sev.ALERT if t.begins_with("ALARM") else GameState.Sev.WARN)
+		if _test.has("burst") and scene is CombatBase:
+			var vf: ViewFX = (scene as CombatBase).view_fx
+			vf.test_burst_at = maxf(float(_test["burst"]) - 0.2, 0.0)
+			vf.test_kind = int(_test.get("burst_kind", "-1"))
+			vf.test_hold = _test.has("burst_hold")
 	if _test.has("shot"):
 		var wait := float(_test.get("wait", "3"))
 		if _test.has("look"):

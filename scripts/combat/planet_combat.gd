@@ -629,7 +629,7 @@ func _on_city_destroyed(p: PlanetData, idx: int) -> void:
 		return
 	var root: Node3D = city_nodes[idx]
 	Effects.explosion(fx_root, root.global_position + Vector3(0, 8, 0), 26.0, Color(1.0, 0.5, 0.2))
-	Effects.explosion(fx_root, root.global_position + Vector3(8, 4, -6), 18.0, Color(1.0, 0.45, 0.15), false)
+	Effects.explosion(fx_root, root.global_position + Vector3(8, 4, -6), 18.0, Color(1.0, 0.45, 0.15), false, true)
 	Audio.sfx_3d("city_destroyed", self, root.global_position, 8.0, 0.0, 0, 300.0)
 	Audio.sfx("city_destroyed", -6.0)
 	shake = maxf(shake, 0.6)
@@ -787,7 +787,7 @@ func bomb_trajectory(n: int) -> Array:
 
 
 func drop_bomb() -> void:
-	if not bombs_allowed() or not GameState.use_bomb():
+	if not bombs_allowed() or GameState.has_damage("bombs") or not GameState.use_bomb():
 		return
 	var r := _bomb_release()
 	var p0: Vector3 = r[0]
@@ -953,15 +953,13 @@ func _on_enemy_city_destroyed(p: PlanetData, idx: int) -> void:
 	for k in 3:
 		var off := Vector3(randf_range(-14, 14), randf_range(4, 16), randf_range(-14, 14))
 		tw.tween_interval(0.22)
-		tw.tween_callback(func(): Effects.explosion(fx_root, c + off, randf_range(16.0, 24.0), Color(1.0, 0.55, 0.25), false))
+		tw.tween_callback(func(): Effects.explosion(fx_root, c + off, randf_range(16.0, 24.0), Color(1.0, 0.55, 0.25), false, true))   # weich (fotosicher)
 	_add_scorch(c, 26.0)
 	var alien_snd := Audio.has_sound("alien_city_destroyed")
 	# alien_city_destroyed ist ~2,5 dB lauter gemischt als city_destroyed → etwas weniger Anhebung
 	Audio.sfx_3d("alien_city_destroyed" if alien_snd else "city_destroyed", self, c, 5.5 if alien_snd else 8.0, 0.0, 0, 400.0)
 	Audio.sfx("explosion_huge", -6.0)
-	shake = maxf(shake, 1.0)
-	flash = maxf(flash, 0.35)
-	flash_color = Color(1.0, 0.6, 0.85)
+	shake = maxf(shake, 0.6)   # fotosicher: kein zusätzlicher Bildschirm-Farbblitz zur Explosionsfolge
 	_set_city_model(idx, false)
 	hud.add_popup(c + Vector3(0, 30, 0), "+%d" % Config.enemy_city_points, UITheme.GREEN)
 	_update_enemy_texts()

@@ -24,10 +24,11 @@ signal enemy_city_destroyed(planet: PlanetData, city_index: int)
 signal enemy_squadron_launched(sq: SquadronData, planet: PlanetData)
 signal defenders_changed(planet: PlanetData)
 signal bombs_changed(value: int)
+signal damage_changed(kind: String)   ## Systemschaden aufgetreten ("" = repariert)
 
 ## ENEMY_SYSTEM = Ankunftspunkt im Feindsystem (Empfangskomitee), ENEMY_PLANET = Feindplanet,
 ## HOME_SYSTEM = Sprungziel "zurück ins Helion-System" (nur als Sprungziel auf der Feindkarte)
-enum Loc { NONE, HOME_ORBIT, PLANET, STATION, SQUADRON, SPACE, ENEMY_SYSTEM, ENEMY_PLANET, HOME_SYSTEM }
+enum Loc { NONE, HOME_ORBIT, PLANET, STATION, SQUADRON, SPACE, ENEMY_SYSTEM, ENEMY_PLANET, HOME_SYSTEM, STAR }
 enum Sev { INFO, GOOD, WARN, ALERT }
 
 const MAP_SIZE := Vector2(1600, 900)
@@ -35,6 +36,7 @@ const JUMP_POINT := Vector2(-712, -372)     ## [ORIGINAL] Sprungpunkt zum Feinds
 const STAR_NAME := "Helion"
 const ENEMY_GATE := Vector2(712, 372)       ## [FREI] Sprungpunkt im Feindsystem zurück nach Helion: unten rechts
 const ENEMY_STAR_NAME := "Vorrhal"
+const STAR_POS := Vector2.ZERO             ## Stern in der Kartenmitte (Helion bzw. Vorrhal)
 
 ## [FREI] Feindsystem: 5 Planeten (die Heimatwelt innen) und ein Stern
 const ENEMY_PLANET_DEFS := [
@@ -91,6 +93,10 @@ var bombs := 15
 var reception_active := false   ## Empfangskomitee am Ankunftspunkt noch nicht abgewehrt
 var reception_left := 0         ## [Vorgabe] Fighter des (einzigen) Empfangskomitees, die noch leben (Config.reception_once)
 var production_progress := 0.0  ## 0..1 bis zum nächsten Schwadron-Start im Feindsystem
+var star_heat := 0.0            ## [Vorgabe] Hitze am Stern 0..1 (1 = Schiff verglüht)
+var _star_leaving := false      ## Absprung vom Stern läuft: keine Hitze mehr
+var _star_arriving := false     ## Hyperraum läuft beim Anflug noch aus: Hitze und Tanken erst danach (volle 10 s)
+var damage := ""               ## [Vorgabe] aktiver Systemschaden: "", "bombs", "screen", "comms" – höchstens einer
 var victory := false
 var end_kind := ""              ## "gameover" | "victory" | "abort" – für die Auswertung
 var in_game := false            ## eine Partie läuft (Titel/Auswertung: false)
@@ -139,6 +145,10 @@ func new_game() -> void:
 	reception_active = false
 	reception_left = Config.reception_fighter_count
 	production_progress = 0.0
+	star_heat = 0.0
+	_star_leaving = false
+	_star_arriving = false
+	damage = ""
 	victory = false
 	end_kind = ""
 	in_game = true
@@ -149,7 +159,8 @@ func new_game() -> void:
 	stats = {"fighters": 0, "destroyers": 0, "flagships": 0, "squadrons": 0, "cities_lost": 0,
 		"planets_saved": 0, "stations_defended": 0, "jumps": 0, "energy_refueled": 0.0,
 		"enemy_cities": 0, "bombs_dropped": 0, "bombs_hit": 0, "enemy_jumps": 0, "receptions": 0,
-		"enemy_squadrons_intercepted": 0,
+		"enemy_squadrons_intercepted": 0, "star_visits": 0, "star_energy": 0.0,
+		"damages": 0, "repairs": 0, "damage_kinds": {},
 		"points": {"fighters": 0, "destroyers": 0, "flagships": 0, "enemy_cities": 0, "bonus": 0}}
 	_create_planets()
 	_create_stations()
@@ -297,6 +308,9 @@ func _process(delta: float) -> void:
 			s.angle = wrapf(s.angle + s.angular_speed * dt, 0.0, TAU)
 	for ep in enemy_planets:
 		ep.angle = wrapf(ep.angle + ep.angular_speed * dt, 0.0, TAU)
+	_update_star(delta)   # Stern in Echtzeit (wie das Tanken an Stationen), unabhängig von time_scale (F7)
+	if game_over:
+		return
 	_update_spawning(dt)
 	for sq in squadrons.duplicate():
 		_update_squadron(sq, dt)
@@ -323,7 +337,7 @@ func _update_spawning(dt: float) -> void:
 	if not enemy_production_active():
 		if not _production_stop_logged:
 			_production_stop_logged = true
-			log_event("Die feindliche Produktion ist zum Erliegen gekommen – keine neuen Schwadrone mehr!", Sev.GOOD)
+			log_event("Die feindliche Produktion ist zum Erliegen gekommen – keine neuen Schwadrone mehr!", Sev.GOOD, "", -1, true)
 		return
 	if enemy_squadrons.size() >= Config.enemy_system_max_squadrons:
 		return
@@ -427,7 +441,7 @@ func _update_enemy_squadron(sq: SquadronData, dt: float) -> void:
 
 
 func enemy_squadron_speed(sq: SquadronData) -> float:
-	return squadron_speed(sq) * Config.enemy_transit_speed_factor
+	return _base_speed(sq) * Config.enemy_transit_speed_factor
 
 
 ## Schwadron am Sprungpunkt des Feindsystems springt ins Helion-System (sonst wartet es, bis dort Platz ist).
@@ -482,7 +496,8 @@ func _update_squadron(sq: SquadronData, dt: float) -> void:
 			if sq.fighters <= 0:
 				_liftoff(sq, "")
 				return
-			s.integrity -= Config.station_damage_per_fighter * sq.fighters * dt
+			# Fighter ohne squadron_fighter_factor gerechnet: Stationen fallen so schnell wie in 0.11.0
+			s.integrity -= Config.station_damage_per_fighter * float(sq.fighters) / maxf(Config.squadron_fighter_factor, 0.01) * dt
 			if s.integrity <= 0.0 and Config.station_can_be_destroyed:
 				_destroy_station(s)
 				_liftoff(sq, "")
@@ -498,9 +513,17 @@ func is_squadron_stopped(sq: SquadronData) -> bool:
 	return fmod(sq.stop_clock, cycle) < Config.single_destroyer_stop_time
 
 
-## [ORIGINAL] Je kleiner das Schwadron, desto langsamer.
+## [ORIGINAL] Je kleiner das Schwadron, desto langsamer. Im Heimatsystem × squadron_speed_home_factor.
 func squadron_speed(sq: SquadronData) -> float:
-	var t := clampf(sq.strength() / Config.squadron_strength_ref, 0.0, 1.0)
+	return _base_speed(sq) * Config.squadron_speed_home_factor
+
+
+## Grundtempo nach Stärke. Die Fighter zählen ohne squadron_fighter_factor, damit die größeren Schwadrone
+## nicht automatisch schneller fliegen.
+func _base_speed(sq: SquadronData) -> float:
+	var f := float(sq.fighters) / maxf(Config.squadron_fighter_factor, 0.01)
+	var strength := f + 4.0 * sq.destroyers.size() + (2.0 if sq.has_flagship else 0.0)
+	var t := clampf(strength / Config.squadron_strength_ref, 0.0, 1.0)
 	return lerpf(Config.squadron_speed_min, Config.squadron_speed_max, t) * sqrt(Config.difficulty_scale)
 
 
@@ -754,7 +777,7 @@ func _make_squadron(lvl: int) -> SquadronData:
 	# [FREI] Untergrenze für die ersten Stufen (squadron_fighters_start_min/max), danach wachsend
 	var fmin := clampi(maxi(Config.squadron_fighters_start_min, Config.squadron_fighters_min + lvl), Config.squadron_fighters_min, Config.squadron_fighters_max - 3)
 	var fmax := clampi(maxi(Config.squadron_fighters_start_max, Config.squadron_fighters_min + 3 + lvl * 2), fmin, Config.squadron_fighters_max)
-	sq.fighters = rng.randi_range(fmin, fmax)
+	sq.fighters = maxi(int(round(rng.randi_range(fmin, fmax) * Config.squadron_fighter_factor)), 1)   # [Vorgabe] × Faktor
 	sq.fighters_initial = sq.fighters
 	var dmin := Config.squadron_destroyers_min if lvl < 3 else mini(Config.squadron_destroyers_min + 1, Config.squadron_destroyers_max)
 	var dmax := mini(Config.squadron_destroyers_min + 1 + lvl, Config.squadron_destroyers_max)
@@ -805,7 +828,7 @@ func on_fighter_killed(sq: SquadronData) -> void:
 		sq.has_flagship = false
 		stats.stations_defended += 1
 		add_score(Config.bonus_station_defended, "Station verteidigt", "bonus")
-		log_event("%s erfolgreich verteidigt!" % s.name, Sev.GOOD)
+		log_event("%s erfolgreich verteidigt!" % s.name, Sev.GOOD, "", -1, true)
 	_check_squadron(sq)
 
 
@@ -825,7 +848,7 @@ func on_destroyer_hit(sq: SquadronData, d: DestroyerData) -> bool:
 			stats.planets_saved += 1
 			var bonus := Config.bonus_city_saved * p.alive_cities()
 			add_score(bonus, "Planet gerettet", "bonus")
-			log_event("%s ist vorerst gerettet! (+%d)" % [p.name, bonus], Sev.GOOD)
+			log_event("%s ist vorerst gerettet! (+%d)" % [p.name, bonus], Sev.GOOD, "", -1, true)
 			planet_saved.emit(p)
 		_check_squadron(sq)
 	return true
@@ -836,7 +859,7 @@ func on_flagship_killed(sq: SquadronData) -> void:
 		return
 	stats.flagships += 1
 	add_score(Config.flagship_points, "Flaggschiff", "flagships")
-	log_event("Flaggschiff vernichtet! (+%d)" % Config.flagship_points, Sev.GOOD)
+	log_event("Flaggschiff vernichtet! (+%d)" % Config.flagship_points, Sev.GOOD, "", -1, true)
 	if sq:
 		sq.has_flagship = false
 
@@ -860,7 +883,7 @@ func _check_squadron(sq: SquadronData) -> void:
 		stats.enemy_squadrons_intercepted += 1
 	stats.squadrons += 1
 	add_score(Config.bonus_squadron_destroyed, "Schwadron vernichtet", "bonus")
-	log_event("%s vernichtet! (+%d)" % [sq.name, Config.bonus_squadron_destroyed], Sev.GOOD)
+	log_event("%s vernichtet! (+%d)" % [sq.name, Config.bonus_squadron_destroyed], Sev.GOOD, "", -1, true)
 	if player_loc == Loc.SQUADRON and player_loc_id == sq.id:
 		player_loc = Loc.SPACE
 		player_loc_id = -1
@@ -905,7 +928,7 @@ func trigger_victory() -> void:
 	victory = true
 	if Config.bonus_victory > 0:
 		add_score(Config.bonus_victory, "Sieg", "bonus")
-	log_event(victory_text(), Sev.GOOD)
+	log_event(victory_text(), Sev.GOOD, "", -1, true)
 	_end_game("victory", "victory")
 
 
@@ -950,6 +973,8 @@ func _log_evaluation() -> void:
 		"punkte_fighter": pts.get("fighters", 0), "punkte_zerstoerer": pts.get("destroyers", 0),
 		"punkte_flaggschiffe": pts.get("flagships", 0), "punkte_feindstaedte": pts.get("enemy_cities", 0),
 		"punkte_boni": pts.get("bonus", 0),
+		"sternbesuche": stats.get("star_visits", 0), "systemschaeden": stats.get("damages", 0),
+		"reparaturen": stats.get("repairs", 0),
 	}
 	var parts := []
 	for k in row:
@@ -957,13 +982,22 @@ func _log_evaluation() -> void:
 	print("EVALUATION ", " ".join(parts))
 	var path := "user://auswertungen.csv"
 	var exists := FileAccess.file_exists(path)
+	var header := ";".join(PackedStringArray(row.keys()))
 	var f := FileAccess.open(path, FileAccess.READ_WRITE if exists else FileAccess.WRITE)
 	if f == null:
 		return
 	if exists:
+		# neue Spalten (z. B. 0.12.0): Kopfzeile erneut schreiben, damit die folgenden Zeilen passen
+		var last_header := ""
+		while not f.eof_reached():
+			var line := f.get_line()
+			if line.begins_with("datum;"):
+				last_header = line
 		f.seek_end()
+		if last_header != header:
+			f.store_line(header)
 	else:
-		f.store_line(";".join(PackedStringArray(row.keys())))
+		f.store_line(header)
 	var vals := PackedStringArray()
 	for k in row:
 		vals.append(str(row[k]))
@@ -1036,16 +1070,16 @@ func destroy_enemy_city(p: PlanetData, idx: int) -> void:
 	stats.enemy_cities += 1
 	stats.bombs_hit += 1
 	add_score(Config.enemy_city_points, "Feindstadt", "enemy_cities")
-	log_event("%s: Feindstadt %s zerstört! (%d übrig)" % [p.name, p.city_names[idx], p.alive_cities()], Sev.GOOD)
+	log_event("%s: Feindstadt %s zerstört! (%d übrig)" % [p.name, p.city_names[idx], p.alive_cities()], Sev.GOOD, "", -1, true)
 	enemy_city_destroyed.emit(p, idx)
 	if victory_cities_left() == 0:
 		trigger_victory()
 	elif p.alive_cities() == 0:
 		if p.is_home:
 			var n := enemy_cities_alive()
-			log_event("Heimatwelt %s ausgeschaltet! Noch %d %s im System." % [p.name, n, "Feindstadt" if n == 1 else "Feindstädte"], Sev.GOOD)
+			log_event("Heimatwelt %s ausgeschaltet! Noch %d %s im System." % [p.name, n, "Feindstadt" if n == 1 else "Feindstädte"], Sev.GOOD, "", -1, true)
 		else:
-			log_event("%s ist ausgeschaltet – von dort starten keine Schwadrone mehr." % p.name, Sev.GOOD)
+			log_event("%s ist ausgeschaltet – von dort starten keine Schwadrone mehr." % p.name, Sev.GOOD, "", -1, true)
 
 
 ## Bis zum Sieg verbleibende Feindstädte: [Vorgabe] alle im Feindsystem (bzw. nur die Heimatwelt, wenn
@@ -1067,7 +1101,7 @@ func on_defender_killed(p: PlanetData) -> void:
 	p.defenders = maxi(p.defenders - 1, 0)
 	defenders_changed.emit(p)
 	if p.defenders == 0:
-		log_event("%s: Luftverteidigung ausgeschaltet!" % p.name, Sev.GOOD)
+		log_event("%s: Luftverteidigung ausgeschaltet!" % p.name, Sev.GOOD, "", -1, true)
 
 
 func use_bomb() -> bool:
@@ -1117,6 +1151,126 @@ func reception_size() -> int:
 
 func on_reception_fighter_killed() -> void:
 	reception_left = maxi(reception_left - 1, 0)
+
+
+# =============================================================================================
+#  Stern [Vorgabe]: Schnelltanken an Helion bzw. Vorrhal – nur Energie (keine Reparatur, keine Bomben).
+#  Die Hitze steigt, solange man dort ist – auch bei offener Karte. Bei 100 % verglüht das Schiff.
+# =============================================================================================
+func star_name(system := -1) -> String:
+	var s := player_system if system < 0 else system
+	return ENEMY_STAR_NAME if s == 1 else STAR_NAME
+
+
+func is_at_star() -> bool:
+	return player_loc == Loc.STAR and not _star_leaving
+
+
+func arrive_at_star() -> void:
+	star_heat = 0.0
+	_star_leaving = false
+	_star_arriving = true   # bis Main.request_jump den Hyperraum beendet (jump_finished)
+	stats.star_visits = int(stats.get("star_visits", 0)) + 1
+	set_player_location(Loc.STAR, player_system)
+
+
+## Absprung beginnt (Main.request_jump): ab jetzt keine Hitze mehr.
+func leave_star() -> void:
+	if player_loc == Loc.STAR:
+		_star_leaving = true
+
+
+## Ende eines Hyperraumsprungs (Main): erst jetzt kann der Spieler handeln – am Stern beginnt die Hitze.
+func jump_finished() -> void:
+	_star_arriving = false
+
+
+## Sekunden bis zum Verglühen (bei 0 Hitze: star_heat_time).
+func star_time_left() -> float:
+	return maxf((1.0 - star_heat) * Config.star_heat_time, 0.0)
+
+
+func _update_star(dt: float) -> void:
+	if player_loc != Loc.STAR:
+		star_heat = 0.0
+		_star_leaving = false
+		_star_arriving = false
+		return
+	if _star_leaving or _star_arriving:
+		return
+	star_heat = minf(star_heat + dt / maxf(Config.star_heat_time, 0.1), 1.0)
+	var add := minf(Config.star_refuel_rate * dt, Config.energy_max - energy)
+	if add > 0.0:
+		stats.energy_refueled = float(stats.get("energy_refueled", 0.0)) + add
+		stats.star_energy = float(stats.get("star_energy", 0.0)) + add
+		change_energy(add)
+	if star_heat >= 1.0:
+		trigger_game_over("star")
+
+
+# =============================================================================================
+#  Systemschäden [Vorgabe 0.12.0]: Unter Config.damage_energy_threshold Energie kann jeder weitere Treffer
+#  EINEN Schaden verursachen (Bombenschacht / Sichtsystem / Kommunikation, je eigene Chance, sonst nichts).
+#  Höchstens ein Schaden gleichzeitig; Reparatur nur beim Andocken an einer Station.
+# =============================================================================================
+const DAMAGE_NAMES := {"bombs": "BOMBENSCHACHT", "screen": "SICHTSYSTEM", "comms": "KOMMUNIKATION"}
+
+
+## Würfelt nach einem Treffer, der bei energy_before (Energie VOR dem Treffer) einschlug.
+## Gibt die neue Schadensart zurück oder "".
+func roll_damage(energy_before: float) -> String:
+	if not Config.damage_enabled or damage != "" or game_over:
+		return ""
+	if energy_before >= Config.damage_energy_threshold:
+		return ""
+	var r := rng.randf()
+	var k := ""
+	var c_b := Config.damage_chance_bombs
+	var c_s := c_b + Config.damage_chance_screen
+	var c_c := c_s + Config.damage_chance_comms
+	if r < c_b:
+		k = "bombs"
+	elif r < c_s:
+		k = "screen"
+	elif r < c_c:
+		k = "comms"
+	if k != "":
+		set_damage(k)
+	return k
+
+
+## Setzt einen Schaden direkt (Würfel, Tests). Ersetzt keinen bestehenden.
+func set_damage(k: String) -> void:
+	if k == "" or damage != "" or not DAMAGE_NAMES.has(k):
+		return
+	damage = k
+	stats.damages = int(stats.get("damages", 0)) + 1
+	var kinds: Dictionary = stats.get("damage_kinds", {})
+	kinds[k] = int(kinds.get(k, 0)) + 1
+	stats.damage_kinds = kinds
+	damage_changed.emit(k)
+	changed.emit()
+
+
+## Reparatur an der Station. Gibt die reparierte Schadensart zurück ("" = nichts zu tun).
+func repair() -> String:
+	if damage == "":
+		return ""
+	var k := damage
+	damage = ""
+	stats.repairs = int(stats.get("repairs", 0)) + 1
+	damage_changed.emit("")
+	changed.emit()
+	return k
+
+
+func has_damage(k: String) -> bool:
+	return damage == k
+
+
+func damage_name(k := "") -> String:
+	var key := damage if k == "" else k
+	return DAMAGE_NAMES.get(key, "")
 
 
 ## Rücksprung ins Helion-System: Ankunft im Tiefraum am Sprungpunkt oben links.
@@ -1183,6 +1337,8 @@ func _update_player_map_pos() -> void:
 				player_map_pos = enemy_planets[player_loc_id].map_pos()
 		Loc.ENEMY_SYSTEM:
 			player_map_pos = ENEMY_GATE
+		Loc.STAR:
+			player_map_pos = STAR_POS
 
 
 ## Sprungkosten abhängig von der Entfernung.  [VERMUTET] im Heimatsystem bis ca. 15 %
@@ -1208,13 +1364,60 @@ func pay_jump(to: Vector2) -> void:
 # =============================================================================================
 #  Ereignisprotokoll / Hilfen
 # =============================================================================================
-func log_event(text: String, sev: int = Sev.INFO, kind := "", ref := -1) -> void:
-	events.append({"t": sim_time, "text": text, "sev": sev})
+## local = true: Ereignis am eigenen Ort bzw. Folge eigener Handlungen (an Bord bekannt, keine Funkmeldung).
+## Bei gestörter Kommunikation fehlen Meldungen von außen teilweise ganz, die übrigen sind verstümmelt
+## (fest pro Meldung, kein Flackern). Die Karte selbst bleibt korrekt.
+func log_event(text: String, sev: int = Sev.INFO, kind := "", ref := -1, local := false) -> void:
+	var e := {"t": sim_time, "text": text, "sev": sev, "shown": text, "lost": false}
+	if damage == "comms" and not local and not _event_here(kind, ref):
+		if rng.randf() < Config.damage_comms_lost:
+			e.lost = true
+			e.shown = ""
+		else:
+			e.shown = garble(text, Config.damage_comms_garble, rng.randi())
+	events.append(e)
 	if events.size() > 40:
 		events.pop_front()
 	event_logged.emit(text, sev)
 	if kind != "":
 		alert_raised.emit(kind, ref)
+
+
+## Ereignis am aktuellen Ort des Spielers (sieht er selbst)?
+func _event_here(kind: String, ref: int) -> bool:
+	match kind:
+		"landing", "city":
+			return is_player_at_planet(ref)
+		"station_attack", "station_lost":
+			return is_player_at_station(ref)
+	return false
+
+
+## Angezeigter Text einer Meldung ("" = bei gestörter Kommunikation verloren gegangen).
+static func event_shown(e: Dictionary) -> String:
+	if e.get("lost", false):
+		return ""
+	return e.get("shown", e.get("text", ""))
+
+
+## Ist die zuletzt protokollierte Meldung verloren gegangen (Alarm/Hinweiston unterdrücken)?
+func last_event_lost() -> bool:
+	return not events.is_empty() and bool(events.back().get("lost", false))
+
+
+## Funkstörung: Zeichen fest (pro Meldung gleich) durch Rauschzeichen ersetzen, Leerzeichen bleiben.
+static func garble(text: String, amount: float, seed: int) -> String:
+	var r := RandomNumberGenerator.new()
+	r.seed = seed
+	const NOISE := ["·", "·", "·", "·", "/", "-"]
+	var out := ""
+	for i in text.length():
+		var ch := text[i]
+		if ch == " " or r.randf() >= amount:
+			out += ch
+		else:
+			out += NOISE[r.randi() % NOISE.size()]
+	return out
 
 
 static func format_time(t: float) -> String:

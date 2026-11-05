@@ -29,6 +29,9 @@ var glass_corners := PackedVector3Array()
 var stack_corners := PackedVector3Array()
 ## Zwei Punkte auf der Blendschutzkante (2D-Laser verschwinden dahinter)
 var lip_points := PackedVector3Array()
+var _canopy_band := PackedVector3Array()   ## Umriss Kanzelrahmen + Dichtung (Sichtstörung, ViewFX)
+var _stack_box := PackedVector3Array()     ## acht Ecken des Mittelpults
+var _frame_boxes: Array = []               ## Füße, Holme, obere Leiste des Combiner-Glases: {c: 8 Ecken, down: bis unter die Kante}
 
 var _cam: Camera3D
 var _aspect := 16.0 / 9.0
@@ -40,8 +43,10 @@ var _have_prev := false
 var _lag := Vector3.ZERO
 var _lag_v := Vector3.ZERO
 var _t := 0.0
-var _hit := 0.0
+var _hit := 0.0                 ## Lampe TREFFER (Restdauer, s)
 var _hit_heavy := false
+var _hit_hold := 0.0            ## rotes Cockpitlicht: Haltezeit nach der Rückmeldung (s)
+var _glow := 0.0                ## rotes Cockpitlicht 0..1 – schneller Anstieg, langsames Abklingen
 var _fill: OmniLight3D
 var _lamps: Array = []          ## [{id, mat, label}]
 var _viewports: Array = []
@@ -81,6 +86,7 @@ func _build() -> void:
 	_lamps.clear()
 	_viewports.clear()
 	_mfd_mats.clear()
+	_frame_boxes.clear()
 	_res = _res_scale()
 	_make_materials()
 	_build_console()
@@ -162,9 +168,16 @@ func _process(delta: float) -> void:
 	transform = Transform3D(Basis.from_euler(_lag + jit), Vector3(_cam.h_offset, _cam.v_offset, 0.0) + Vector3(jit.y, jit.x, 0.0) * 0.3 + bob)
 	_update_lamps()
 	_update_power()
-	var red := clampf(_hit * (1.6 if _hit_heavy else 2.5), 0.0, 1.0)
-	_fill.light_color = Color(0.55, 0.72, 0.85).lerp(Color(1.0, 0.18, 0.1), red)
-	_fill.light_energy = 0.55 + red * (1.4 if _hit_heavy else 0.6)
+	# Hüllkurve statt An/Aus: Anstieg in ~60 ms, Halten, Abklingen über ~0,7 s – bei Dauerbeschuss (Rückmeldung
+	# höchstens alle 0,5 s) pulsiert das Licht höchstens zweimal pro Sekunde, weich und ohne gesättigtes Rot
+	_hit_hold = maxf(_hit_hold - delta, 0.0)
+	var glow_target := (1.0 if _hit_heavy else 0.55) if _hit_hold > 0.0 else 0.0
+	if glow_target > _glow:
+		_glow = minf(_glow + delta / 0.06, glow_target)
+	else:
+		_glow = maxf(_glow - delta / 0.7, glow_target)
+	_fill.light_color = Color(0.55, 0.72, 0.85).lerp(Color(1.0, 0.55, 0.4), _glow)
+	_fill.light_energy = 0.55 + _glow * 1.2
 
 
 ## Einschalten beim Szenenstart: Bildschirme flackern kurz auf und werden hell.
@@ -179,15 +192,40 @@ func _update_power() -> void:
 		(m as ShaderMaterial).set_shader_parameter("flicker", clampf(off, 0.0, 1.0))
 
 
+## Trefferrückmeldung (über HudBase höchstens alle Config.hit_flash_min_gap Sekunden).
 func on_player_hit(heavy: bool) -> void:
-	_hit = 0.9 if heavy else 0.45
+	_hit = 0.9 if heavy else 0.6   # Lampe länger als der Mindestabstand: bei Dauerbeschuss ruhiges Dauerlicht
 	_hit_heavy = heavy
+	_hit_hold = 0.4 if heavy else 0.25
 
 
 func _on_visibility_changed() -> void:
 	# Karte offen (Szene eingefroren): MFD-Bilder nicht weiter rendern
 	for v in _viewports:
 		(v as SubViewport).render_target_update_mode = SubViewport.UPDATE_ALWAYS if is_visible_in_tree() else SubViewport.UPDATE_DISABLED
+
+
+## Cockpitteile über der Blendschutzkante (lokal) für die Sichtstörung (ViewFX): [{pts, hull}].
+## hull = true: konvexe Hülle der projizierten Punkte (Mittelpult). Reihenfolge so, dass beim Ausschneiden
+## keine Löcher entstehen: Füße und Holme des Combiner-Rahmens reichen bis unter die Blendschutzkante.
+func view_cutouts() -> Array:
+	var out := []
+	if not _canopy_band.is_empty():
+		out.append({"pts": _canopy_band, "hull": false})
+	if _stack_box.size() == 8:
+		out.append({"pts": _stack_box, "hull": true})
+	# Rahmen des Combiner-Glases: exakte Umrisse (konvexe Hülle der Stab-Ecken). Füße und Holme reichen bis unter
+	# die Blendschutzkante (zusätzliche Punkte 0,15 m tiefer), die obere Leiste zuletzt – so entstehen keine Löcher.
+	for fb in _frame_boxes:
+		var corners: PackedVector3Array = fb.c
+		var pts := corners.duplicate()
+		if fb.down:
+			# entlang der eigenen (schrägen) Achse des Stabs nach unten – sonst wölbt sich die Hülle nach außen
+			var axis := (corners[2] - corners[0]).normalized()
+			for c in corners:
+				pts.append(c - axis * 0.15)
+		out.append({"pts": pts, "hull": true})
+	return out
 
 
 ## Glas- und Pultecken in Bildschirmkoordinaten (Laser-Ausblendung, Verdeckung durch die Konsole).
@@ -412,6 +450,7 @@ func _build_stack() -> void:
 	var bbr := Vector3(fbr.x * 1.08, fbr.y, -0.9)
 	var bbl := Vector3(fbl.x * 1.08, fbl.y, -0.9)
 	_hexa([ftl, ftr, fbr, fbl, btl, btr, bbr, bbl], _m_body)
+	_stack_box = PackedVector3Array([ftl, ftr, fbr, fbl, btl, btr, bbr, bbl])
 	_stack_p = ftl
 	_stack_n = (ftr - ftl).cross(fbl - ftl).normalized()
 	if _stack_n.dot(-ftl) < 0.0:
@@ -473,10 +512,22 @@ func _build_glass() -> void:
 	for side: float in [-1.0, 1.0]:
 		var top: Vector3 = tl if side < 0.0 else tr
 		var bot: Vector3 = bl if side < 0.0 else br
-		_bar(bot + Vector3(side * fw * 0.5, -0.03, 0.0), top + Vector3(side * fw * 0.5, fw * 0.5, 0.0), fw, 0.016, _m_frame)
+		_frame_boxes.append({"c": _box_corners(_bar(bot + Vector3(side * fw * 0.5, -0.03, 0.0), top + Vector3(side * fw * 0.5, fw * 0.5, 0.0), fw, 0.016, _m_frame)), "down": true})
 		# Fuß auf dem Blendschutz
-		_bar(bot + Vector3(side * 0.012, -0.045, 0.01), bot + Vector3(side * 0.012, 0.03, 0.0), 0.034, 0.03, _m_frame)
-	_bar(tl + Vector3(-fw, fw * 0.5, 0.0), tr + Vector3(fw, fw * 0.5, 0.0), fw, 0.016, _m_frame)
+		_frame_boxes.push_front({"c": _box_corners(_bar(bot + Vector3(side * 0.012, -0.045, 0.01), bot + Vector3(side * 0.012, 0.03, 0.0), 0.034, 0.03, _m_frame)), "down": true})
+	_frame_boxes.append({"c": _box_corners(_bar(tl + Vector3(-fw, fw * 0.5, 0.0), tr + Vector3(fw, fw * 0.5, 0.0), fw, 0.016, _m_frame)), "down": false})   # zuletzt
+
+
+## Acht Ecken eines Stabs aus _bar (lokale Cockpit-Koordinaten) – für die Sichtstörung (ViewFX).
+func _box_corners(mi: MeshInstance3D) -> PackedVector3Array:
+	var bm := mi.mesh as BoxMesh
+	var h := bm.size * 0.5
+	var out := PackedVector3Array()
+	for sx: float in [-1.0, 1.0]:
+		for sy: float in [-1.0, 1.0]:
+			for sz: float in [-1.0, 1.0]:
+				out.append(mi.transform * Vector3(h.x * sx, h.y * sy, h.z * sz))
+	return out
 
 
 ## Stab zwischen zwei Punkten (Breite quer zur Blickrichtung, Dicke entlang der Blickrichtung).
@@ -529,6 +580,16 @@ func _build_canopy() -> void:
 		seal.append((q + inward * 0.025) * 0.97)
 	_sweep(pts, 0.05, 0.07, _m_frame)
 	_sweep(seal, 0.006, 0.012, _m_seal)
+	# Umriss für die Sichtstörung: Rahmen (halbe Breite 2,5 cm) und Dichtung innen, mit etwas Rand
+	var outer := PackedVector3Array()
+	var inner := PackedVector3Array()
+	for q in pts:
+		var inward := (Vector3(0.0, 0.0, q.z) - q).normalized()
+		outer.append(q - inward * 0.035)
+		inner.append(q + inward * 0.036)
+	inner.reverse()
+	_canopy_band = outer
+	_canopy_band.append_array(inner)
 
 
 ## Getönter Streifen oben in der Kanzel (Blendschutz für die oberen Anzeigen).
@@ -645,7 +706,7 @@ func _mfd(page: int, px: Vector2i, sx: float, sy: float, hw: float, hh: float, p
 const LAMPS_L := [["TREFFER", "hit"], ["ENERGIE", "energy"], ["GESCHOSS", "incoming"],
 	["ZIEL", "lock"], ["IONEN", "ion"], ["LASER", "laser"]]
 const LAMPS_R := [["BOMBEN", "bombs"], ["ANDOCKEN", "dock"], ["DATENLINK", "link"],
-	["SCANNER", "scanner"], ["AUTO", "auto"], ["KARTE", "map"]]
+	["SENSOREN", "sensors"], ["AUTO", "auto"], ["KARTE", "map"]]
 
 
 func _build_lamps() -> void:
@@ -707,17 +768,23 @@ func _update_lamps() -> void:
 				if combat.weapon == CombatBase.Weapon.LASER and combat.fire_enabled:
 					on = UITheme.CYAN
 			"bombs":
-				if combat.bombs_allowed():
+				if GameState.has_damage("bombs"):
+					on = UITheme.RED   # Systemschaden: Bombenschacht klemmt (Dauerlicht)
+				elif combat.bombs_allowed():
 					on = UITheme.AMBER if GameState.bombs > 0 else (UITheme.RED if blink else Color(0, 0, 0, 0))
 			"dock":
 				if combat is SpaceCombat and (combat as SpaceCombat).is_docking():
 					on = UITheme.CYAN if (combat as SpaceCombat).phase == SpaceCombat.Phase.DOCKED or blink else Color(0, 0, 0, 0)
 			"link":
-				if mfd_link and mfd_link.fresh_message():
+				if GameState.has_damage("comms"):
+					on = UITheme.RED   # Systemschaden: Kommunikation gestört
+				elif mfd_link and mfd_link.fresh_message():
 					on = UITheme.CYAN if blink else Color(0, 0, 0, 0)
-			"scanner":
-				if combat is PlanetCombat:
-					on = UITheme.GREEN
+			"sensors":
+				if GameState.has_damage("screen"):
+					on = UITheme.RED   # Systemschaden: Sichtsystem gestört
+				elif combat is PlanetCombat:
+					on = UITheme.GREEN   # Planetenscanner aktiv (wie die Lampe SCANNER bis 0.11.0)
 			"auto":
 				if Config.auto_weapon_switch and not combat.bombs_allowed():
 					on = UITheme.GREEN

@@ -651,6 +651,53 @@ def refuel_complete(rng):
     return trim_tail(rev_mono(x, "plate", 0.35), -60)
 
 
+@sfx("system_damage", -15)
+def system_damage(rng):
+    """Systemschaden (0.12.0): kurzer Kurzschluss (Funkenknistern, Zischen), dann absinkender Ton – ein Bordsystem fällt aus."""
+    n = ns(1.15)
+    t = tarr(n)
+    zap_n = ns(0.32)
+    sparks = crackle(zap_n, 260, rng, 0.8)
+    sparks = svf(sparks, 3200, 0.9, "bp") * 7.0 * env_points([(0, 1.0), (0.18, 0.7), (0.32, 0.0)], zap_n)
+    buzz = square(118, zap_n, 0.3) + square(236.5, zap_n, 0.5) * 0.5
+    buzz = svf(buzz, 1500, 1.4, "lp") * env_points([(0, 0.0), (0.01, 0.55), (0.22, 0.4), (0.3, 0.0)], zap_n)
+    hiss = svf(white(zap_n, rng), 4200, 0.6, "hp") * exp_decay(zap_n, 0.06, attack=0.002) * 0.25
+    f = 760.0 * np.exp(-t / 0.42) + 120.0
+    tone = (sine(f, n) * 0.7 + square(f * 0.5, n, 0.5) * 0.12)
+    tone = svf(tone, 2200, 0.7, "lp") * env_points([(0, 0.0), (0.2, 0.0), (0.24, 0.5), (0.7, 0.3), (1.15, 0.0)], n)
+    x = L(sparks + buzz + hiss, tone)
+    return trim_tail(rev_mono(saturate(x, 1.3), "room", 0.22), -60)
+
+
+@sfx("view_static", -27)
+def view_static(rng):
+    """Sichtstörung (0.12.0): leises Rauschen eines gestörten Bildsignals, 0,3 s, weich ein- und ausgeblendet."""
+    n = ns(0.34)
+    hiss = svf(white(n, rng), 2600, 0.5, "bp") * 0.6 + svf(white(n, rng), 6500, 0.6, "hp") * 0.25
+    crk = svf(crackle(n, 90, rng, 0.6), 3000, 0.8, "bp") * 3.0
+    hum = svf(square(100, n, 0.5), 700, 0.7, "lp") * 0.08
+    env = env_points([(0, 0.0), (0.06, 1.0), (0.2, 0.85), (0.32, 0.0), (0.34, 0.0)], n)
+    return (hiss + crk + hum) * env
+
+
+@sfx("repair_done", -17)
+def repair_done(rng):
+    """Reparatur an der Station (0.12.0): Servo und Verriegelung, danach zwei aufsteigende Bestätigungstöne."""
+    sn = ns(0.42)
+    st = tarr(sn)
+    servo = svf(saw(180 + 260 * (st / 0.42), sn) + saw(183 + 262 * (st / 0.42), sn), 1400, 0.8, "lp")
+    servo *= env_points([(0, 0.0), (0.04, 0.35), (0.36, 0.3), (0.42, 0.0)], sn)
+    m = ns(0.3)
+    exc = white(m, rng) * exp_decay(m, 0.002)
+    latch = resonator_bank(exc, [620, 1180, 1890, 2930], [0.08, 0.06, 0.05, 0.04], [1.0, 0.7, 0.5, 0.3]) * 10
+    x = np.zeros(ns(1.5))
+    mix_into(x, servo, 0)
+    mix_into(x, latch, ns(0.4))
+    for i, mm in enumerate([79, 86]):
+        mix_into(x, _epiano(midi_to_hz(mm), 0.35, 0.85) * 0.8, ns(0.55 + i * 0.12))
+    return trim_tail(rev_mono(x, "plate", 0.3), -60)
+
+
 # =============================================================================================
 # PLANET
 # =============================================================================================

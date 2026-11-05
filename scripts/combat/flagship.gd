@@ -143,7 +143,7 @@ func _process(delta: float) -> void:
 				_enter(St.VULNERABLE)
 				combat.on_flagship_vulnerable(self)
 		St.VULNERABLE:
-			_set_brightness(0.92 + 0.08 * sin(t * 30.0))
+			_set_brightness(0.96 + 0.04 * sin(t * TAU * 1.5))   # fotosicher: ruhiges Pulsieren (vorher 4,8 Hz)
 			_ensure_charge_sound(0.1)
 			Audio.loop_set("flagship_charge", 1.55 + 0.05 * sin(t * 20.0))
 			if st_time >= Config.flagship_vulnerable_time:

@@ -10,7 +10,7 @@ extends CombatBase
 ##  Steuerung [ORIGINAL]: links/rechts/rauf/runter, kein Rollen, keine freie Rotation.
 ## =============================================================================================
 
-enum Mode { ORBIT, SQUADRON, STATION, EMPTY, RECEPTION }
+enum Mode { ORBIT, SQUADRON, STATION, EMPTY, RECEPTION, STAR }
 enum Phase { IDLE, FIGHTERS, DESTROYERS, DONE, DOCK_APPROACH, DOCK_CLAMP, REFUEL, DOCKED }
 
 var mode := Mode.EMPTY
@@ -39,6 +39,7 @@ var dock_t := 0.0
 var dock_from := Vector3.ZERO
 var refuel_t := 0.0
 var bomb_t := 0.0
+var _repaired := ""           ## beim Andocken reparierter Systemschaden (Meldung)
 var _cam_center_from := Vector2.ZERO
 var _done_handled := false
 var arrival_home := false
@@ -80,6 +81,13 @@ static func create_empty(arrival_home := false, note := "") -> SpaceCombat:
 static func create_reception() -> SpaceCombat:
 	var s := SpaceCombat.new()
 	s.mode = Mode.RECEPTION
+	return s
+
+
+## [Vorgabe] Stern Helion bzw. Vorrhal: Schnelltanken (GameState._update_star), Hitze steigt.
+static func create_star() -> SpaceCombat:
+	var s := SpaceCombat.new()
+	s.mode = Mode.STAR
 	return s
 
 
@@ -133,6 +141,14 @@ func _ready() -> void:
 				hud.show_message("%s-SYSTEM" % GameState.STAR_NAME.to_upper(), "Rücksprung abgeschlossen · Bomben gibt es beim Andocken an Stationen", 3.5, UITheme.CYAN)
 			hint_text = "LEERTASTE: Systemkarte"
 			phase = Phase.DONE
+		Mode.STAR:
+			var sn := GameState.star_name().to_upper()
+			location_name = "STERN " + sn
+			location_sub = "Schnelltanken · Hitze steigt!"
+			hint_text = "Energie lädt  ·  LEERTASTE: Karte – rechtzeitig wegspringen!"
+			phase = Phase.DONE
+			hud.show_message("STERN " + sn, "Energie lädt fast sofort · keine Reparatur, keine Bomben · nach ~%d s verglüht das Schiff" % int(Config.star_heat_time), 3.6, UITheme.AMBER)
+			Audio.sfx("refuel_complete", -6.0, 0.7)
 		Mode.RECEPTION:
 			location_name = "FEINDSYSTEM %s" % GameState.ENEMY_STAR_NAME.to_upper()
 			orbit_total = GameState.reception_size()
@@ -163,6 +179,8 @@ func music_track() -> String:
 			return "combat_space" if not orbit_done else "map_theme"
 		Mode.RECEPTION:
 			return "combat_space" if phase == Phase.FIGHTERS else calm
+		Mode.STAR:
+			return "combat_space"   # Anspannung: die Hitze steigt
 	# Schwadron: Kampfmusik nur, solange gekämpft wird (bzw. ein Flaggschiff noch da ist)
 	if phase != Phase.DONE or _flagship_alive():
 		return "combat_space"
@@ -201,6 +219,9 @@ func _build_world() -> void:
 		my_pos = GameState.home_planet().map_pos()
 	elif mode == Mode.RECEPTION:
 		my_pos = GameState.ENEMY_GATE
+	if mode == Mode.STAR:
+		_build_star_world(enemy_sys)
+		return
 	# Richtung zur Sonne aus der Kartenposition (Karte x → Welt x, Karte y → Welt z)
 	_sun_dir = Vector3(-my_pos.x, 0.0, -my_pos.y)
 	if _sun_dir.length() < 1.0:
@@ -242,6 +263,46 @@ func _build_world() -> void:
 			_build_distant_planet(my_pos)
 		_:
 			_build_distant_planet(my_pos)
+
+
+## [Vorgabe] Stern zum Schnelltanken: riesige, ruhig wallende Sonne direkt voraus, Korona, Staub.
+func _build_star_world(enemy_sys: bool) -> void:
+	_sun_dir = Vector3(0.0, 0.07, -1.0).normalized()
+	var sky := ShaderMaterial.new()
+	sky.shader = load("res://shaders/space_sky.gdshader")
+	var pano := Assets.tex("sky/space_panorama_enemy.png" if enemy_sys else "sky/space_panorama.png")
+	if pano == null:
+		pano = Assets.tex("sky/space_panorama.png")
+	if pano:
+		sky.set_shader_parameter("panorama", pano)
+		sky.set_shader_parameter("use_panorama", true)
+		sky.set_shader_parameter("pano_energy", 0.55)   # der Stern überstrahlt den Himmel
+	sky.set_shader_parameter("sun_size", 1.0)   # Scheibe im Himmel aus: die Kugel unten ist der Stern
+	sky.set_shader_parameter("sun_intensity", 0.6)
+	var core := Color(1.0, 0.5, 0.26) if enemy_sys else Color(1.0, 0.92, 0.7)
+	var limb := Color(0.75, 0.12, 0.04) if enemy_sys else Color(1.0, 0.46, 0.1)
+	make_environment(sky, Color(0.45, 0.3, 0.2), 0.7)
+	make_sun(_sun_dir, core, 2.6)
+	var star := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 560.0
+	sm.height = 1120.0
+	sm.radial_segments = 96
+	sm.rings = 48
+	star.mesh = sm
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/star_surface.gdshader")
+	mat.set_shader_parameter("core_color", Vector3(core.r, core.g, core.b))
+	mat.set_shader_parameter("limb_color", Vector3(limb.r, limb.g, limb.b))
+	mat.set_shader_parameter("energy", 1.45 if enemy_sys else 2.0)   # Vorrhal sichtbar rot-orange statt weiß überstrahlt
+	star.material_override = mat
+	star.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(star)
+	star.position = _sun_dir * 1600.0
+	var corona := Assets.glow_sprite(core.lerp(limb, 0.4), 2300.0, 1.4)
+	add_child(corona)
+	corona.position = _sun_dir * 1700.0
+	_build_dust()
 
 
 func _build_dust() -> void:
@@ -419,6 +480,8 @@ func _process(delta: float) -> void:
 		station_beacons[i].visible = fmod(Time.get_ticks_msec() / 1000.0 + i * 0.35, 1.4) < 0.25
 	if bg_planet:
 		bg_planet.rotate_y(delta * 0.002)
+	if mode == Mode.STAR:
+		_update_star(delta)
 	match phase:
 		Phase.FIGHTERS:
 			_update_fighter_phase(delta)
@@ -426,6 +489,36 @@ func _process(delta: float) -> void:
 			_update_destroyer_phase(delta)
 		Phase.DOCK_APPROACH, Phase.DOCK_CLAMP, Phase.REFUEL:
 			_update_docking(delta)
+
+
+# =============================================================================================
+#  Stern: Schnelltanken (Energie und Hitze rechnet GameState – auch bei offener Karte)
+# =============================================================================================
+var _star_tick := 0.0
+var _star_warned := false
+var _star_beep := 0.0
+
+
+func _update_star(delta: float) -> void:
+	if GameState.player_loc != GameState.Loc.STAR:
+		return
+	var heat := GameState.star_heat
+	# leichtes Zittern der Hitze wegen (Regler „Bildschirmwackeln“)
+	shake = maxf(shake, 0.12 + heat * 0.35)
+	# Tank-Tick wie an der Station, solange Energie fließt
+	if GameState.energy < Config.energy_max - 0.01:
+		_star_tick -= delta
+		if _star_tick <= 0.0:
+			_star_tick = 0.25
+			Audio.sfx("refuel_tick", -4.0, 1.25)
+	if heat >= Config.star_heat_warning:
+		if not _star_warned:
+			_star_warned = true
+			hud.show_message("HITZE KRITISCH!", "Sofort springen – LEERTASTE: Karte", 2.6, UITheme.RED)
+		_star_beep -= delta
+		if _star_beep <= 0.0:
+			_star_beep = lerpf(0.9, 0.35, clampf((heat - Config.star_heat_warning) / maxf(1.0 - Config.star_heat_warning, 0.01), 0.0, 1.0))
+			Audio.sfx("warning_low_energy", -3.0, 1.2)
 
 
 # =============================================================================================
@@ -733,13 +826,20 @@ func _update_docking(delta: float) -> void:
 				phase = Phase.REFUEL
 				refuel_t = 0.0
 				bomb_t = 0.0
+				# [Vorgabe 0.12.0] Systemschäden werden nur an Stationen repariert – sofort beim Andocken
+				_repaired = GameState.repair()
+				if _repaired != "":
+					Audio.sfx("repair_done" if Audio.has_sound("repair_done") else "refuel_complete", -2.0)
 				if _refuel_complete():
 					_refuel_done()
 				else:
 					var what := "Energie wird aufgefüllt"
 					if GameState.bombs < Config.bombs_max:
 						what = "Energie und Bomben werden aufgefüllt" if GameState.energy < Config.energy_max - 0.01 else "Bomben werden geladen"
-					hud.show_message("TANKEN", what, 1.5, UITheme.CYAN)
+					if _repaired != "":
+						hud.show_message("REPARATUR · TANKEN", "%s repariert · %s" % [GameState.damage_name(_repaired).capitalize(), what], 2.4, UITheme.GREEN)
+					else:
+						hud.show_message("TANKEN", what, 1.5, UITheme.CYAN)
 		Phase.REFUEL:
 			# [ORIGINAL] ca. 10 % pro Sekunde, sichtbar in 5-%-Schritten
 			refuel_t += delta
@@ -771,6 +871,8 @@ func _refuel_done() -> void:
 	var sub := "Reparatur abgeschlossen · LEERTASTE: Systemkarte"
 	if Config.enemy_system_enabled:
 		sub = "%d Bomben an Bord · LEERTASTE: Systemkarte" % GameState.bombs
+	if _repaired != "":
+		sub = "%s repariert · %s" % [GameState.damage_name(_repaired).capitalize(), sub]
 	hud.show_message("ENERGIE 100 %", sub, 4.0, UITheme.GREEN)
 	location_sub = "Angedockt"
 

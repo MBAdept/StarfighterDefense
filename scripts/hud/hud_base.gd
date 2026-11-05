@@ -16,6 +16,7 @@ var _t := 0.0
 var _energy_shown := 100.0
 var _hit_t := 10.0
 var _hit_heavy := false
+var _pending_heavy := false   ## schwerer Treffer im Mindestabstand: Rückmeldung zum nächsten erlaubten Zeitpunkt
 var _weapon_t := 10.0
 var _f_title: Font
 var _f_disp: Font
@@ -36,6 +37,8 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_t += delta
 	_hit_t += delta
+	if _pending_heavy and _hit_t >= Config.hit_flash_min_gap:
+		_start_hit_cue(true)
 	_weapon_t += delta
 	for m in _msgs:
 		m.t += delta
@@ -70,9 +73,49 @@ func add_popup(world: Vector3, text: String, color: Color) -> void:
 	_popups.append({"w": world, "text": text, "color": color, "t": 0.0})
 
 
-func on_player_hit(heavy: bool, _dmg: float) -> void:
+## Trefferrückmeldung (rote Kante, Projektor-Abdunkeln, Cockpitlicht). Fotosicher: höchstens alle
+## Config.hit_flash_min_gap Sekunden neu ausgelöst (≤ 2 pro Sekunde). Ein schwerer Treffer kurz nach einem leichten
+## wird zum nächsten erlaubten Zeitpunkt nachgeholt; einer kurz nach einem schweren geht in dessen (länger
+## leuchtender) Rückmeldung auf. Der Farbblitz der Nachbearbeitung hat einen eigenen Takt (CombatBase).
+## Gibt true zurück, wenn die Rückmeldung jetzt startet.
+func on_player_hit(heavy: bool, _dmg: float) -> bool:
+	if _hit_t < Config.hit_flash_min_gap:
+		if heavy and not _hit_heavy:
+			_pending_heavy = true
+		return false
+	_start_hit_cue(heavy)
+	return true
+
+
+func _start_hit_cue(heavy: bool) -> void:
 	_hit_t = 0.0
 	_hit_heavy = heavy
+	_pending_heavy = false
+	_on_hit_cue(heavy)
+
+
+## Nachgeholte schwere Rückmeldung verwerfen (Karte, Pause, Untergang – sonst „Phantomtreffer“).
+func clear_pending_hit() -> void:
+	_pending_heavy = false
+
+
+## Von CockpitHUD überschrieben: Cockpitlicht und Lampe TREFFER folgen derselben Rückmeldung.
+func _on_hit_cue(_heavy: bool) -> void:
+	pass
+
+
+## Kurzzeile für einen aktiven Systemschaden ("" = keiner).
+func _damage_line() -> String:
+	if GameState.damage == "":
+		return ""
+	match GameState.damage:
+		"bombs":
+			return "SCHADEN: BOMBENSCHACHT KLEMMT"
+		"screen":
+			return "SCHADEN: SICHTSYSTEM GESTÖRT"
+		"comms":
+			return "SCHADEN: KOMMUNIKATION GESTÖRT"
+	return "SCHADEN: " + GameState.damage_name()
 
 
 func on_weapon_changed() -> void:

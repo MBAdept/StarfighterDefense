@@ -83,10 +83,10 @@ func _make_layer(cb: Callable, mat: Material) -> Control:
 func _update(_delta: float) -> void:
 	_update_projection()
 	_impact_visible = _calc_impact_visible()
-	# schwerer Treffer: Projektor flackert kurz
+	# schwerer Treffer: Projektor dunkelt kurz ab und erholt sich weich (fotosicher: kein Flackern)
 	var flick := 1.0
 	if _hit_heavy and _hit_t < 0.35:
-		flick = 0.35 + 0.65 * float(int(_t * 37.0) % 3 != 0)
+		flick = 0.55 + 0.45 * smoothstep(0.0, 0.35, _hit_t)
 	_glass_mat.set_shader_parameter("intensity", flick)
 	_hmd_mat.set_shader_parameter("intensity", flick)
 	var boot := clampf(_t / BOOT_TIME, 0.0, 1.0)
@@ -123,8 +123,7 @@ func _update_projection() -> void:
 # ---------------------------------------------------------------------------------------------
 #  Schnittstelle
 # ---------------------------------------------------------------------------------------------
-func on_player_hit(heavy: bool, dmg: float) -> void:
-	super(heavy, dmg)
+func _on_hit_cue(heavy: bool) -> void:
 	if rig:
 		rig.on_player_hit(heavy)
 
@@ -299,6 +298,8 @@ func _draw_glass() -> void:
 	_draw_weapon_tape(c)
 	_draw_weapon_block(c)
 	_draw_lage(c)
+	if GameState.player_loc == GameState.Loc.STAR:
+		_draw_star_gauge(c)
 	_draw_messages(c)
 
 
@@ -541,6 +542,8 @@ func _draw_weapon_tape(c: Vector2) -> void:
 				_gbox(r, Color(UITheme.AMBER, 0.85 if i < GameState.bombs else 0.35), 1.2)
 			var yb := lerpf(bot, top, clampf((GameState.bombs - 0.5) / n, 0.0, 1.0))
 			_gtext(Vector2(x + 26, yb + 7), "%d / %d" % [GameState.bombs, Config.bombs_max], _f_mono, 19, UITheme.RED if empty else UITheme.AMBER)
+			if GameState.has_damage("bombs"):
+				_gtext(Vector2(x + 26, yb + 31), "KLEMMT", _f_mono, 17, UITheme.RED.lightened(0.2))
 
 
 func _draw_weapon_block(c: Vector2) -> void:
@@ -566,6 +569,9 @@ func _draw_weapon_block(c: Vector2) -> void:
 			name = "BOMBEN  %d / %d" % [GameState.bombs, Config.bombs_max]
 			col = UITheme.RED if empty else UITheme.AMBER
 			sub = "LEER – Nachladen an Station" if empty else ("BEREIT · Abwurf mit FEUER · Q: Laser" if combat.bomb_cd <= 0.0 else "LÄDT … · Q: Laser")
+			if GameState.has_damage("bombs"):
+				col = UITheme.RED
+				sub = "KLEMMT – Reparatur an einer Station · Q: Laser"
 	var nfs := 25
 	while nfs > 18 and _f_disp.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, nfs).x > w:
 		nfs -= 1
@@ -602,6 +608,30 @@ func _draw_lage(c: Vector2) -> void:
 				var dc: Color = UITheme.DESTROYER_COLORS[int(cols[k])]
 				_ci.draw_rect(r.grow(2.0), Color(dc, 0.18))
 				_ci.draw_rect(r, dc)
+
+
+# --- Stern: Hitzeanzeige ------------------------------------------------------------------------
+func _draw_star_gauge(c: Vector2) -> void:
+	var heat := GameState.star_heat
+	var hot := heat >= Config.star_heat_warning
+	var col := UITheme.RED if hot else UITheme.AMBER
+	var w := 420.0
+	var x := c.x - w * 0.5
+	var y := c.y + 64.0
+	_gtext(Vector2(x, y), "HITZE", _f_mono, 18, col)
+	_gtext(Vector2(x, y), "%d %%" % int(round(heat * 100.0)), _f_mono, 18, col, HORIZONTAL_ALIGNMENT_RIGHT, w)
+	var segs := 20
+	var sw := w / segs
+	for i in segs:
+		var on := (float(i) + 0.5) / segs <= heat
+		var r := Rect2(Vector2(x + i * sw + 1.5, y + 8.0), Vector2(sw - 3.0, 12.0))
+		if on:
+			_ci.draw_rect(r, Color(col, 0.85))
+		_gbox(r, Color(col, 0.45 if not on else 0.9), 1.0)
+	var line := "VERGLÜHEN IN %.1f s" % GameState.star_time_left()
+	if hot and fmod(_t, 0.5) < 0.32:   # langsames Blinken (2 Hz), kleine Fläche
+		line = "SOFORT SPRINGEN – LEERTASTE"
+	_gtext(Vector2(x, y + 44.0), line, _f_disp, 20, col, HORIZONTAL_ALIGNMENT_CENTER, w)
 
 
 # --- Meldungen ---------------------------------------------------------------------------------
@@ -645,6 +675,13 @@ func _draw_header() -> void:
 	var x := size.x * 0.072
 	var w := size.x * 0.148
 	var y := 128.0
+	var dl := _damage_line()
+	if dl != "":
+		# Systemschaden: ruhige rote Zeile über dem Ort (langsames, weiches Pulsieren)
+		var dfs := 18
+		while dfs > 13 and _f_disp.get_string_size(dl, HORIZONTAL_ALIGNMENT_LEFT, -1, dfs).x > w:
+			dfs -= 1
+		_gtext(Vector2(x, y - 34.0), dl, _f_disp, dfs, Color(UITheme.RED.lightened(0.25), 0.85 + 0.15 * sin(_t * 2.5)))
 	var name := combat.location_name
 	var nfs := 22
 	while nfs > 15 and _f_disp.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, nfs).x > w:
@@ -740,11 +777,11 @@ func _draw_target_marker() -> void:
 			var ch := f.charge_level()
 			var vul := f.is_vulnerable()
 			var bc := UITheme.PINK.lerp(Color(1, 1, 1), 0.5 if vul else 0.0)
-			var bs := 34.0 + (6.0 * sin(_t * 20.0) if vul else 0.0)
+			var bs := 34.0 + (6.0 * sin(_t * 12.0) if vul else 0.0)
 			_gbox(Rect2(wp.pos - Vector2(bs, bs), Vector2(bs, bs) * 2.0), Color(bc, 0.95), 3.0 if vul else 1.6)
 			_ci.draw_rect(Rect2(wp.pos + Vector2(-bs, bs + 8.0), Vector2(bs * 2.0 * ch, 6.0)), bc)
 			_ci.draw_rect(Rect2(wp.pos + Vector2(-bs, bs + 8.0), Vector2(bs * 2.0, 6.0)), Color(bc, 0.5), false, 1.0)
-			if vul and fmod(_t, 0.3) < 0.2:
+			if vul and fmod(_t, 0.5) < 0.32:   # 2 Hz (fotosicher)
 				_gtext(wp.pos + Vector2(-bs, -bs - 12.0), "VERWUNDBAR!", _f_disp, 22, Color(1, 0.85, 0.97))
 
 
@@ -808,11 +845,12 @@ func _draw_popups() -> void:
 #  Trefferkante (rotes Glimmen am Bildrand)
 # ---------------------------------------------------------------------------------------------
 func _draw_alert() -> void:
-	var a := clampf(1.0 - _hit_t * (1.5 if _hit_heavy else 3.0), 0.0, 1.0)
+	# langsames Abklingen: bei Dauerbeschuss (Rückmeldung höchstens alle 0,5 s) bleibt die Kante ruhig statt zu pulsieren
+	var a := clampf(1.0 - _hit_t * (1.2 if _hit_heavy else 1.6), 0.0, 1.0)
 	if a <= 0.0:
 		return
 	var vp := size
-	var col := Color(1.0, 0.25, 0.15, a * (0.5 if _hit_heavy else 0.28))
+	var col := Color(1.0, 0.55, 0.4, a * (0.5 if _hit_heavy else 0.28))   # kein gesättigtes Rot (fotosicher)
 	var w := 44.0 if _hit_heavy else 20.0
 	for i in 6:
 		var k := float(i) / 6.0

@@ -23,8 +23,9 @@ Am Ende steht immer eine **Auswertung**: bei Sieg, Game Over und vorzeitigem Abb
 2. **Systemkarte (Leertaste)**: Ziel wählen (Planet, Station, Schwadron) und springen. Ein Sprung kostet Energie, je weiter, desto mehr (2,5–12 %).
 3. **Weltraumkampf**: Erst die Fighter (Bordlaser), danach die Zerstörer nacheinander (Ionen-Kanone). Sie stehen knapp außerhalb des Sichtfelds, also links oder rechts suchen. Ein Flaggschiff kann zusätzlich auftauchen.
 4. **Planetenkampf**: Die Zerstörer schweben über Städten und bombardieren sie. Im Scanner blinkt die bombardierte Stadt. Sind alle Zerstörer vernichtet, ist der Planet gerettet.
-5. **Raumstation**: Andocken, auftanken (10 %/s in 5-%-Schritten) und **Bomben nachladen**. Wird die Station angegriffen, erst die Fighter vernichten.
-6. **Feindsystem**: Siehe nächster Abschnitt.
+5. **Raumstation**: Andocken, auftanken (10 %/s in 5-%-Schritten), **Bomben nachladen** und **Systemschäden reparieren**. Wird die Station angegriffen, erst die Fighter vernichten.
+6. **Stern** (Helion bzw. Vorrhal, Kartenmitte): Energie fast sofort auffüllen, aber schnell wieder weg. Siehe „Sterne und Systemschäden“.
+7. **Feindsystem**: Siehe nächster Abschnitt.
 
 ## Das Feindsystem (taktischer Teil)
 
@@ -47,11 +48,54 @@ Am Ende steht immer eine **Auswertung**: bei Sieg, Game Over und vorzeitigem Abb
 
 Tipps:
 - **Zerstörer**: blau = 2 Treffer, grün = 3, rot = 4. Jeder Treffer nimmt eine Schildschicht weg. Getroffen wird nur die sichtbare Schildblase.
-  - Zerstörer schwanken stark hin und her und **weichen anfliegenden Ionen-Kugeln oft blitzschnell aus**: blaue und grüne häufiger, rote seltener (die schwanken dafür am stärksten). Nicht jeder Schuss sitzt, also dranbleiben.
-  - Auf Planeten weichen sie nicht aus.
+  - Zerstörer schwanken stark hin und her (rote am stärksten). Nicht jeder Schuss sitzt, also dranbleiben. Die plötzlichen Ausweichmanöver vor Ionen-Kugeln gibt es seit 0.12.0 nicht mehr (`destroyer_dodge_chance`).
 - **Flaggschiff**: Nur das rosa Quadrat ist verwundbar, und nur kurz vor dem eigenen Schuss, wenn es weiß-rosa leuchtet. Die Ionen-Kugel braucht Flugzeit, also leicht vorher feuern!
 - **Ausweichen**: Wer im Moment des Einschlags kräftig lenkt (auf Planeten: schnell fliegt), halbiert die Trefferchance des Gegners. Laser können anfliegende Geschosse auch abschießen.
 - **Taktik**: Kleinere Schwadrone fliegen langsamer. Ein angeschlagenes Schwadron zu verlangsamen kann klüger sein, als es ganz auszulöschen.
+
+## Sterne und Systemschäden (ab 0.12.0)
+
+**Stern – Schnelltanken**
+- In der Mitte beider Systemkarten liegt ein Stern: **Helion** bzw. **Vorrhal**. Er lässt sich wie jedes andere Ziel anspringen.
+- Am Stern füllt sich die Energie **fast sofort**: 25 % pro Sekunde, von 0 auf 100 % in 4 Sekunden.
+- Er **repariert nichts** und lädt **keine Bomben** nach. Das geht nur an Stationen.
+- Gleichzeitig steigt die **Hitze**. Nach **10 Sekunden** verglüht das Schiff (Game Over). Ab 60 % Hitze gibt es Warntöne und rote Anzeigen, auch auf der Karte.
+- Die Hitze steigt **auch bei offener Karte** weiter. Also Ziel wählen und sofort springen.
+- Ab dem Absprung ist die Hitze vorbei.
+- Im Feindsystem spart der Stern Vorrhal den teuren Rücksprung, solange noch Bomben an Bord sind.
+
+**Systemschäden**
+- Unter **30 % Energie** kann jeder weitere Treffer ein Bordsystem beschädigen. Fällt die Energie durch einen Treffer unter 30 % und ist noch kein Bordsystem beschädigt, erscheint der Hinweis „ENERGIE UNTER 30 %“.
+- Je Treffer gilt: 10 % **Bombenschacht**, 10 % **Sichtsystem**, 10 % **Kommunikation**, 70 % nichts passiert.
+- Es gibt **höchstens einen Schaden gleichzeitig**. Weitere Treffer verursachen keinen zweiten.
+- **Repariert wird nur an einer Station**, sofort beim Andocken. Der Stern repariert nicht.
+- Ein aktiver Schaden steht im HUD links oben in Rot. Im Cockpit leuchtet dazu die passende Warnlampe dauerhaft rot: BOMBEN, SENSOREN oder DATENLINK. Auf der Karte erscheint ein Hinweis und an den Stationen „Repariert beim Andocken“.
+
+| Schaden | Wirkung |
+|---|---|
+| Bombenschacht | Bomben klemmen und lassen sich nicht abwerfen. Bordlaser und Ionen-Kanone funktionieren normal. |
+| Sichtsystem | Nur die Außensicht ist gestört, Cockpit und HUD bleiben klar. Die Welt hinter den Scheiben schwankt leicht. Etwa alle 2,5–5 Sekunden kommt ein Störungsstoß von 0,3 Sekunden, entweder feiner Schnee oder weiche grüne Streifen. |
+| Kommunikation | Meldungen von außen (Ticker, DATENLINK, Kartenprotokoll) fehlen zu etwa einem Drittel ganz. Die übrigen kommen verstümmelt an. Auch der Stationsalarm bleibt aus, wenn seine Meldung verloren geht. Warnungen an Bord, eigene Erfolge und die Karte selbst bleiben korrekt. |
+
+**Fotosensibilität**: Die Sichtstörung ist bewusst fotosicher gestaltet:
+- Sie blitzt nicht auf und die mittlere Helligkeit bleibt erhalten.
+- Ein- und Ausblendung sind weich.
+- Es kommt höchstens ein Stoß alle 2,5 Sekunden, weit unter der Grenze von 3 Blitzen pro Sekunde.
+- Es gibt keine harten oder regelmäßigen Streifenmuster.
+- Das Schwanken ist langsam (unter 1,2 Hz) und folgt der Option „Bildschirmwackeln“. Bei 0 schwankt nichts.
+
+Im selben Zug wurden auch ältere Effekte entschärft (gemessen nach WCAG 2.3.1):
+- Treffer-Farbblitze und die rote Trefferkante kommen höchstens zweimal pro Sekunde und sind nicht mehr gesättigt rot. Ein schwerer Treffer kurz nach einem leichten wird kurz darauf nachgeholt, statt verloren zu gehen.
+- Die Störstreifen bei schweren Treffern wechseln nur noch dreimal pro Sekunde (vorher 24-mal).
+- Der Projektor flackert nicht mehr, sondern dunkelt kurz weich ab.
+- Das Cockpitlicht glimmt bei Treffern nur noch lachsfarben statt grellrot auf, höchstens zweimal pro Sekunde, und klingt weich ab. Bei Dauerbeschuss pulsiert es deshalb weiterhin, aber ruhig (unter 2 Hz).
+- **Hyperraumsprung**: Die Sternstreifen konnten nach längerer Spielzeit von Bild zu Bild springen, wie ein Stroboskop. Jetzt laufen sie mit begrenztem Tempo und weniger Kontrast. Beim Sprung zwischen den Systemen ist der Tunnel lachsfarben statt gesättigt rot.
+- **Untergang des Schiffs** (Energie leer oder am Stern verglüht): Statt vieler greller Explosionen direkt vor dem Cockpit gibt es eine Explosion. Danach folgen ein ruhiges Ausklingen mit weichem Schwanken und Abdunkeln sowie wenige, weiter entfernte Explosionen ohne Lichtblitz.
+- **Zerstörte Feindstadt**: Die Folgeexplosionen blitzen nicht mehr, und der zusätzliche Bildschirm-Farbblitz entfällt.
+- **Explosionen allgemein**: Höchstens drei grelle Explosionen pro Sekunde. Weitere werden ohne Kernblitz, Lichtpuls und Schockwelle gezeichnet.
+- Das verwundbare Quadrat des Flaggschiffs pulsiert ruhig mit 1,5 Hz (vorher 4,8 Hz), die Schrift „VERWUNDBAR!“ blinkt mit 2 Hz.
+
+Abschalten bzw. anpassen über die `balance.cfg`: `damage_enabled`, `damage_energy_threshold`, `damage_chance_bombs/screen/comms`, `damage_comms_lost`, `damage_comms_garble`, `damage_screen_*`, `star_refuel_enabled`, `star_refuel_rate`, `star_heat_time`.
 
 ## Cockpit-Ansicht (Head-Up-Display)
 
@@ -71,8 +115,8 @@ Seit 0.11.0 sitzt du in einem echten 3D-Cockpit. Die Anzeigen leuchten wie bei e
   - Spalte rechts: Meldungen der Systemkarte
 - **Konsole**:
   - drei Bildschirme: NAV links, in der Mitte der **Planetenscanner** bzw. Andocken/Tanken bzw. Waffenstatus, DATENLINK rechts
-  - Warnlampen, z. B. TREFFER, ENERGIE, GESCHOSS, ZIEL, BOMBEN, ANDOCKEN
-- **Bewegung**: Bei Drehungen federt das Cockpit leicht nach, bei Treffern wackelt es und das Licht blitzt rot. Die Zielsymbolik bleibt dabei immer deckungsgleich mit der Welt.
+  - Warnlampen, z. B. TREFFER, ENERGIE, GESCHOSS, ZIEL, BOMBEN, ANDOCKEN, SENSOREN. SENSOREN leuchtet auf Planeten grün (Scanner aktiv). Dauerhaft rot leuchtende BOMBEN, SENSOREN oder DATENLINK melden einen Systemschaden. Blinkt BOMBEN rot, sind die Bomben alle.
+- **Bewegung**: Bei Drehungen federt das Cockpit leicht nach, bei Treffern wackelt es und das Licht glimmt rot auf. Die Zielsymbolik bleibt dabei immer deckungsgleich mit der Welt.
 - **Einstellungen**:
   - **Optionen → „Cockpit mit Head-Up-Display“** schaltet auf die bisherige flache Anzeige zurück, auch mitten im Kampf.
   - Die Trägheit lässt sich über `cockpit_lag` in der `balance.cfg` einstellen (0 = starr).
@@ -118,6 +162,15 @@ Testszenarien über die Kommandozeile (`StarfighterDefense -- --test=…`):
 | `victory` | Nur noch eine einzige Feindstadt im System, auf `--planet=N`, Standard Heimatwelt (Sieg testen) |
 | `enemy_map` | Feindkarte mit startenden Schwadronen |
 | `evaluation` | Auswertungsbildschirm, `--end=victory\|abort\|gameover` |
+| `star` | Am Stern, `--system=1` für Vorrhal, `--energy=N` Startenergie |
+
+Zusätzliche Testhilfen (0.12.0, in allen Testszenarien `--test=…`; ein reines `--autoplay` ohne Szenario beginnt ein neues Spiel und setzt sie zurück):
+- `--energy=N`: Startenergie, z. B. unter 30 %, damit Treffer Systemschäden auslösen können.
+- `--damage=bombs|screen|comms`: Systemschaden gleich zu Beginn.
+- `--burst=S` (nur mit `--damage=screen`, in Kampfszenen): erzwingt einen Störungsstoß nach S Sekunden.
+- `--burst_kind=0|1` (mit `--burst`): Art der Stöße, 0 = Schnee, 1 = grüne Streifen.
+- `--burst_hold` (mit `--burst`): hält den Stoß ab Szenenbeginn dauerhaft auf voller Stärke, für Standbilder.
+- `--comms_demo` (mit `--damage=comms`): erzeugt einige Meldungen von außen, die verloren gehen oder verstümmelt ankommen.
 
 Mit `-- --autoplay --raid` greift der automatische Testfahrer auch das Feindsystem an. Optionen:
 - `--human`: menschenähnlicher Testfahrer
@@ -130,9 +183,9 @@ Mit `-- --autoplay --raid` greift der automatische Testfahrer auch das Feindsyst
 Am Ende jeder Partie (Sieg, Game Over oder Abbruch über *Pause → Spiel beenden*) zeigt das Spiel:
 - zerstörte Fighter, abgeschossene Zerstörer, vernichtete Flaggschiffe und zerbombte Feindstädte, jeweils mit den erzielten Punkten,
 - verlorene eigene Städte und die Spielzeit,
-- Boni, vernichtete Schwadrone, Bombentreffer, Sprünge und erreichte Stufe.
+- Boni, vernichtete Schwadrone, Bombentreffer, Sprünge, Sternbesuche, Systemschäden (davon repariert) und erreichte Stufe.
 
-Jede Auswertung wird zusätzlich als Zeile an **`auswertungen.csv`** im Benutzerordner angehängt (Semikolon-getrennt, für Excel/LibreOffice). So lassen sich Punktzahlen verschiedener Taktiken vergleichen.
+Jede Auswertung wird zusätzlich als Zeile an **`auswertungen.csv`** im Benutzerordner angehängt (Semikolon-getrennt, für Excel/LibreOffice). So lassen sich Punktzahlen verschiedener Taktiken vergleichen. Kommen neue Spalten hinzu (z. B. Sternbesuche in 0.12.0), schreibt das Spiel vor der nächsten Zeile eine neue Kopfzeile.
 
 ## Spielwerte anpassen (ohne neu zu exportieren)
 
@@ -158,6 +211,26 @@ Eine Vorlage mit allen Werten schreibt das Spiel beim Start nach `balance_templa
 Dort liegen auch `highscores.json` und `settings.cfg`.
 
 Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automatische Waffenwahl, 9/12 Fighter im Orbit, die [VERMUTET]-Regel „Schwadron mit nur einem Zerstörer bleibt zeitweise stehen“, Schwierigkeit, Scanner-Ausrichtung, Randpfeile, Retro-Filter und die Cockpit-Ansicht.
+
+## Änderungen in Version 0.12.0 – Sterne, Systemschäden, mehr Fighter
+
+- **Mehr Fighter, ruhigere Zerstörer**:
+  - Jedes Schwadron hat **doppelt so viele Fighter** (`squadron_fighter_factor=2.0`).
+  - Dafür fliegen die Schwadrone im Helion-System **20 % langsamer** (`squadron_speed_home_factor=0.8`).
+  - Die plötzlichen Ausweichmanöver der Zerstörer vor Ionen-Kugeln sind abgeschaltet. Das Hin- und Herschwanken bleibt.
+- **Sterne Helion und Vorrhal**: Schnelltanken in Sekunden, aber nach 10 s verglüht das Schiff. Keine Reparatur, keine Bomben. Details siehe „Sterne und Systemschäden“.
+- **Systemschäden** unter 30 % Energie: Bombenschacht, Sichtsystem oder Kommunikation, je 10 % pro Treffer, höchstens einer gleichzeitig. Repariert wird nur an Stationen.
+- **Fotosicherheit**:
+  - Die neue Sichtstörung kommt ohne Blitze aus.
+  - Trefferblitze kommen höchstens zweimal pro Sekunde und sind nicht mehr gesättigt rot.
+  - Störstreifen und Projektor flackern nicht mehr schnell.
+  - Hyperraumsprung, Untergang des Schiffs, zerstörte Feindstädte und das Flaggschiff-Quadrat sind ruhiger.
+  - Grelle Explosionen sind auf höchstens drei pro Sekunde begrenzt.
+  - Details siehe „Sterne und Systemschäden“.
+- Warnlampe SCANNER heißt jetzt SENSOREN: grün auf Planeten wie bisher, rot bei gestörtem Sichtsystem.
+- Die Hitzewarnung am Stern erscheint auch auf der Karte und beim Blick ins andere System, mit Warnton.
+- Neue Klänge: Systemschaden, Reparatur, Bildrauschen.
+- Auswertung und `auswertungen.csv` zeigen zusätzlich Sternbesuche, Systemschäden und Reparaturen.
 
 ## Änderungen in Version 0.11.0 – Cockpit mit Head-Up-Display
 
@@ -241,7 +314,12 @@ Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automati
 ## Stand / offene Punkte
 
 - **Militär-Rang und Siegbonus** folgen nach deinen Tests. Vorgesehen ist `bonus_victory` in `config.gd`, derzeit 0.
-- **Sieg ohne Städteverlust ist möglich** (Endstand 0.10.2): Mit der Strategie „Verteidigung zuerst“ (`--raid_safe`) gewann der menschenähnliche Testfahrer 9 von 10 Partien, 7 davon ohne eine einzige verlorene eigene Stadt (sonst 1 bzw. 3). Er brauchte 15–35 Minuten, im Schnitt 24. Einmal ging ihm früh die Energie aus: Ein Flaggschiff traf ihn dreimal, und er floh zu spät. Der perfekte Testfahrer brauchte 8–11 Minuten.
+- **Messung 0.12.0** mit dem menschenähnlichen Testfahrer, alle Neuerungen aktiv (doppelte Fighter, Tempo 0,8, Sterne, Systemschäden):
+  - „Verteidigung zuerst“ (`--raid_safe`): **12 von 12 Partien gewonnen**, alle ohne verlorene eigene Stadt. Dauer 14–24 Minuten, im Schnitt 21. Je Partie gab es 0–3 Systemschäden (im Schnitt 1,5), alle wurden an Stationen repariert. Dazu kamen 3–6 Sternbesuche.
+  - Sturmangriff (`--raid`): 8 von 8 Partien gewonnen, in 13–20 Minuten. Dabei gingen 0–27 eigene Städte verloren.
+  - Gegenüber 0.10.2 (im Schnitt 24 Minuten) sind die Partien kürzer, an den Sternen liegt das aber kaum. Ein Vergleichslauf ohne Sterne und Systemschäden dauerte ebenfalls rund 21 Minuten. Vorrhal erspart zwar manchen Rücksprung zum Tanken (5–6 statt 6–7 Angriffe), die Spieldauer ändert sich dadurch höchstens um ein bis zwei Minuten.
+  - Schwadron-Tempo 1,0 statt 0,8 änderte im Vergleichslauf kaum etwas: 19,5 Minuten, keine Stadt verloren.
+- **Sieg ohne Städteverlust ist möglich** (Messung 0.10.2): Mit der Strategie „Verteidigung zuerst“ (`--raid_safe`) gewann der menschenähnliche Testfahrer 9 von 10 Partien, 7 davon ohne eine einzige verlorene eigene Stadt (sonst 1 bzw. 3). Er brauchte 15–35 Minuten, im Schnitt 24. Einmal ging ihm früh die Energie aus: Ein Flaggschiff traf ihn dreimal, und er floh zu spät. Der perfekte Testfahrer brauchte 8–11 Minuten.
   - Mit Sturmangriff (`--raid`) gewann der menschenähnliche Testfahrer 5 von 6 Partien in 12–17 Minuten, verlor dabei aber 5–16 eigene Städte. Einmal ging ihm nach 9,5 Minuten die Energie aus.
   - Die Gesamtspielzeit liegt damit etwa auf dem Niveau von 0.10.1 oder leicht darüber: Die Kämpfe dauern länger, dafür entfallen die wiederholten Empfangskomitees.
 - **Balance** (ab 0.10.1): Für den Sieg müssen alle Feindstädte fallen, mit 10 Bomben je Anflug und heftig feuernden Verteidigern. Ein Sturmangriff gleich zu Beginn reicht damit nicht mehr. Feinjustierung über `enemy_defender_fire_rate_factor`, `enemy_defender_burst_shots`, `enemy_defender_wave_delay` und `bombs_max`.
@@ -259,6 +337,7 @@ scripts/hud/cockpit_hud.gd    Cockpit-Ansicht: Head-Up-Display auf dem Combiner-
 scripts/hud/cockpit_rig.gd    3D-Cockpit (Konsole, Kanzel, Combiner-Glas, Warnlampen, Nachfedern)
 scripts/hud/cockpit_mfd.gd    Bildschirme der Konsole (NAV, Scanner/Andocken/Waffen, Datenlink)
 scripts/hud/classic_hud.gd    klassische flache Anzeige (Optionen)
+scripts/fx/view_fx.gd         Sichtstörung (Systemschaden), nur auf den Scheibenflächen
 shaders/                      Himmel, Planeten, Boden, Schilde, Explosionen, Hyperraum, Nachbearbeitung
 assets/                       Modelle (glb), Texturen, Audio, Schriften (OFL)
 tools/                        Generatoren: Blender-Modelle, Texturen, Klangsynthese/Komposition

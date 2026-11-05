@@ -38,9 +38,13 @@ func _process(delta: float) -> void:
 
 ## Neue Meldung in den letzten Sekunden? (Warnlampe DATENLINK)
 func fresh_message() -> bool:
-	if GameState.events.is_empty():
-		return false
-	return float(GameState.events.back().t) > GameState.sim_time - 4.0
+	for i in range(GameState.events.size() - 1, -1, -1):
+		var e: Dictionary = GameState.events[i]
+		if float(e.t) <= GameState.sim_time - 4.0:
+			return false
+		if GameState.event_shown(e) != "":
+			return true
+	return false
 
 
 func _draw() -> void:
@@ -57,6 +61,8 @@ func _draw() -> void:
 				_draw_scanner()
 			elif combat is SpaceCombat and (combat as SpaceCombat).is_docking():
 				_draw_dock()
+			elif GameState.player_loc == GameState.Loc.STAR:
+				_draw_star()
 			else:
 				_draw_weapons()
 	# Rahmenlinie und leichte Rasterung (Displaycharakter)
@@ -77,14 +83,14 @@ func _fit(s: String, f: Font, fs: int, width: float, min_fs := 12) -> int:
 
 
 ## Tastenbeschriftungen am oberen Rand (OSB), die aktive Seite hervorgehoben.
-func _osb(labels: Array, active: int) -> void:
+func _osb(labels: Array, active: int, active_col: Color = INK) -> void:
 	var w := size.x / labels.size()
 	for i in labels.size():
 		var r := Rect2(Vector2(i * w + 6, 5), Vector2(w - 12, 19))
 		if i == active:
-			draw_rect(r, Color(INK, 0.16))
-			draw_rect(r, Color(INK, 0.7), false, 1.0)
-		_txt(Vector2(i * w, 20), labels[i], _f_mono, 14, INK if i == active else DIM, HORIZONTAL_ALIGNMENT_CENTER, w)
+			draw_rect(r, Color(active_col, 0.16))
+			draw_rect(r, Color(active_col, 0.7), false, 1.0)
+		_txt(Vector2(i * w, 20), labels[i], _f_mono, 14, active_col if i == active else DIM, HORIZONTAL_ALIGNMENT_CENTER, w)
 
 
 # --- NAV ---------------------------------------------------------------------------------------
@@ -112,7 +118,10 @@ func _draw_nav() -> void:
 
 # --- Datenlink ---------------------------------------------------------------------------------
 func _draw_link() -> void:
-	_osb(["KOMM", "DATENLINK", "SYS"], 1)
+	# gestörte Kommunikation: Kopfzeile "GESTÖRT" (der untere Rand des Schirms liegt oft unter der Bildkante),
+	# Meldungen verstümmelt bzw. fehlend
+	var comms_down := GameState.damage == "comms"
+	_osb(["KOMM", "GESTÖRT" if comms_down else "DATENLINK", "SYS"], 1, UITheme.RED if comms_down else INK)
 	var ev: Array = GameState.events
 	if ev.is_empty():
 		_txt(Vector2(0, 110), "KEINE MELDUNGEN", _f_mono, 18, DIM, HORIZONTAL_ALIGNMENT_CENTER, size.x)
@@ -120,13 +129,16 @@ func _draw_link() -> void:
 	var y := 34.0
 	var shown := 0
 	var w := size.x - 86.0
+	var bottom := size.y - 4.0
 	for i in range(ev.size() - 1, -1, -1):
 		var e: Dictionary = ev[i]
+		var text := GameState.event_shown(e)
+		if text == "":
+			continue
 		var col := UITheme.sev_color(int(e.sev))
-		var text: String = e.text
 		var lines := 1 if _f_body.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x <= w else 2
 		var h := 8.0 + lines * 19.0
-		if y + h > size.y - 4.0:
+		if y + h > bottom:
 			break
 		var age := GameState.sim_time - float(e.t)
 		var fresh := age < 4.0 and fmod(_t, 0.5) < 0.3
@@ -247,6 +259,23 @@ func _draw_dock() -> void:
 				draw_rect(r, Color(UITheme.AMBER, 0.35), false, 1.0)
 	var status := "VERRIEGELT" if sc.phase != SpaceCombat.Phase.DOCK_APPROACH else "ANFLUG"
 	_txt(Vector2(0, size.y - 12.0), status, _f_mono, 15, DIM, HORIZONTAL_ALIGNMENT_CENTER, size.x)
+
+
+# --- Stern: Schnelltanken ------------------------------------------------------------------------
+func _draw_star() -> void:
+	var heat := GameState.star_heat
+	var hot := heat >= Config.star_heat_warning
+	_txt(Vector2(12, 22), "STERN " + GameState.star_name().to_upper(), _f_mono, 15, INK)
+	_txt(Vector2(12, 56), "SCHNELLTANKEN", _f_disp, _fit("SCHNELLTANKEN", _f_disp, 24, size.x - 24.0), UITheme.AMBER)
+	_txt(Vector2(12, 92), "ENERGIE", _f_mono, 16, DIM)
+	_txt(Vector2(0, 124), "%d %%" % int(round(GameState.energy)), _f_mono, 50, UITheme.GREEN, HORIZONTAL_ALIGNMENT_RIGHT, size.x - 14.0)
+	_txt(Vector2(12, 160), "HITZE", _f_mono, 16, Color(UITheme.RED if hot else UITheme.AMBER, 0.9))
+	_txt(Vector2(0, 160), "%d %%" % int(round(heat * 100.0)), _f_mono, 22, UITheme.RED if hot else UITheme.AMBER, HORIZONTAL_ALIGNMENT_RIGHT, size.x - 14.0)
+	var bar := Rect2(Vector2(12, 172), Vector2(size.x - 24.0, 22))
+	draw_rect(bar, Color(UITheme.AMBER, 0.12))
+	draw_rect(Rect2(bar.position, Vector2(bar.size.x * heat, bar.size.y)), UITheme.RED if hot else UITheme.AMBER)
+	draw_rect(bar, Color(UITheme.AMBER, 0.5), false, 1.0)
+	_txt(Vector2(0, size.y - 14.0), "VERGLÜHEN IN %.1f s" % GameState.star_time_left(), _f_mono, 17, UITheme.RED if hot else DIM, HORIZONTAL_ALIGNMENT_CENTER, size.x)
 
 
 # --- Waffen (Weltraum) -------------------------------------------------------------------------

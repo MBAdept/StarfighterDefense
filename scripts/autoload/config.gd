@@ -59,9 +59,32 @@ var jump_duration := 1.7                ## [FREI] Dauer des Sprungeffekts
 # ---------------------------------------------------------------------------------------------
 var station_count := 2                  ## [ORIGINAL] 2 Raumstationen
 var dock_slide_time := 3.2              ## [ORIGINAL] Station fährt von links bis zur Bildmitte
+## [ORIGINAL qualitativ, Werte FREI] Stern (Helion/Vorrhal): Energie fast sofort voll – aber schnell wieder weg,
+## sonst verglüht das Schiff. Keine Reparatur, keine Bomben. Die Hitze steigt auch bei offener Karte.
+var star_refuel_enabled := true
+var star_refuel_rate := 25.0           ## Energie %/s am Stern (0 → 100 % in 4 s)
+var star_heat_time := 10.0             ## Sekunden am Stern bis zum Verglühen
+var star_heat_warning := 0.6           ## ab diesem Hitzeanteil Warnton und rote Anzeige
+## [Vorgabe] Systemschäden: Wer unter damage_energy_threshold Energie getroffen wird, riskiert je Treffer einen
+## Schaden (je Art mit eigener Chance, zusammen 30 %, sonst nichts). Höchstens EIN Schaden gleichzeitig.
+## Reparatur nur beim Andocken an einer Station (der Stern repariert nicht).
+var damage_enabled := true
+var damage_energy_threshold := 30.0     ## % Energie
+var damage_chance_bombs := 0.1          ## Bombenschacht klemmt: keine Bomben abwerfbar
+var damage_chance_screen := 0.1         ## Sichtsystem gestört: Außensicht wackelt, Rauschen/Störstreifen (fotosicher)
+var damage_chance_comms := 0.1          ## Kommunikation gestört: Meldungen von außen fehlen oder sind verstümmelt
+var damage_comms_lost := 0.35           ## Anteil der Meldungen von außen, die bei gestörter Kommunikation ganz fehlen
+var damage_comms_garble := 0.45         ## Anteil verstümmelter Zeichen in den übrigen Meldungen
+## Sichtstörung [Vorgabe, fotosicher]: Außensicht schwankt leicht; alle damage_screen_burst_min..max Sekunden ein
+## Störungsstoß von damage_screen_burst_time Sekunden (feiner Schnee oder weiche grüne Streifen, weich ein-/ausgeblendet,
+## mittlere Helligkeit bleibt) – höchstens ein Stoß alle 2,5 s, weit unter 3 Blitzen pro Sekunde.
+var damage_screen_burst_time := 0.3
+var damage_screen_burst_min := 2.5
+var damage_screen_burst_max := 5.0
+var damage_screen_wobble := 3.0         ## Bildpunkte (bei 1080p) Schwanken der Außensicht, × Optionen "Bildschirmwackeln"
 var refuel_rate := 10.0                 ## [ORIGINAL] ca. 10 % pro Sekunde …
 var refuel_step := 5.0                  ## [ORIGINAL] … sichtbar in 5-%-Schritten
-var station_damage_per_fighter := 0.07  ## [FREI] % Stationsintegrität pro Sekunde und angreifendem Fighter
+var station_damage_per_fighter := 0.07  ## [FREI] % Stationsintegrität pro Sekunde und angreifendem Fighter (ohne squadron_fighter_factor gezählt)
 var station_can_be_destroyed := true    ## [FREI] unverteidigte Stationen können zerstört werden
 
 # ---------------------------------------------------------------------------------------------
@@ -145,8 +168,8 @@ var destroyer_size_scale := 1.25                    ## [FREI] Modellgröße
 ## (bis 0.10.1: großzügige Kugel – "zu leicht zu treffen"; 0.10.2: Ellipsoid × 0,9)
 var destroyer_hitbox_scale := 0.9
 ## [FREI] Ausweichen: fliegt eine Ionen-Kugel auf einen Zerstörer zu, weicht er mit dieser Chance aus [blau, grün, rot]
-## (neu in 0.10.2; die roten schwanken schon von sich aus am stärksten und weichen daher seltener aus)
-var destroyer_dodge_chance := [0.62, 0.56, 0.32]
+## [Vorgabe 0.12.0] aus – die Pendelbewegung genügt (0.10.2–0.11.0: [0.62, 0.56, 0.32])
+var destroyer_dodge_chance := [0.0, 0.0, 0.0]
 var destroyer_dodge_angle := 12.0                   ## [FREI] Ausweichweg (Grad)
 var destroyer_dodge_reaction_min := 0.04            ## [FREI] Reaktionszeit (s)
 var destroyer_dodge_reaction_max := 0.12            ## [FREI]
@@ -173,7 +196,10 @@ var flagship_weakpoint_radius := 5.0    ## [FREI] Trefferradius des rosa Quadrat
 #  Schwadrone (Übersichtskarte)
 # ---------------------------------------------------------------------------------------------
 var max_squadrons := 4                  ## [ORIGINAL] bis zu 4 gleichzeitig
-var squadron_fighters_min := 3          ## [ORIGINAL] 3–12 Fighter
+## [Vorgabe 0.12.0] Fighter je Schwadron × Faktor (längere Kämpfe). Orbit-Start, Empfangskomitee und
+## Planetenverteidiger bleiben unverändert. Das Tempo der Schwadrone rechnet mit der Größe ohne Faktor.
+var squadron_fighter_factor := 2.0
+var squadron_fighters_min := 3          ## [ORIGINAL] 3–12 Fighter (vor squadron_fighter_factor)
 var squadron_fighters_max := 12         ## [ORIGINAL]
 var squadron_fighters_start_min := 5    ## [FREI] Mindest-Fighterzahl der ersten Stufen (Stufe 1–2: 5–8 Fighter), ab Stufe 3 unverändert
 var squadron_fighters_start_max := 8    ## [FREI]
@@ -181,6 +207,7 @@ var squadron_destroyers_min := 1        ## [ORIGINAL] 1–3 Zerstörer
 var squadron_destroyers_max := 3        ## [ORIGINAL]
 var squadron_speed_min := 1.0           ## [ORIGINAL qualitativ] sehr langsam; kleineres Schwadron = langsamer (Karteneinheiten/s)
 var squadron_speed_max := 3.3           ## [FREI]
+var squadron_speed_home_factor := 0.8   ## [Vorgabe 0.12.0] Schwadrone im Heimatsystem langsamer (mehr Zeit für die längeren Kämpfe)
 var squadron_strength_ref := 26.0       ## [FREI] Stärke (Fighter + 4×Zerstörer + 2×Flaggschiff) für Höchsttempo
 var single_destroyer_stops := true      ## [VERMUTET] nur noch 1 Zerstörer → Schwadron bleibt zeitweise stehen (abschaltbar)
 var single_destroyer_stop_time := 18.0  ## [VERMUTET]
@@ -300,6 +327,7 @@ var bomb_camera_pitch := -14.0          ## [FREI] Blick im Bombenmodus nach unte
 var offscreen_indicators := true        ## [FREI] Pfeile am Bildrand zu Gegnern außerhalb der Sicht
 var scanner_heading_up := true          ## [FREI] Planetenscanner dreht mit (Flugrichtung oben)
 var screen_shake := 1.0                 ## [FREI]
+var hit_flash_min_gap := 0.5            ## [FREI, fotosicher] Treffer-Farbblitze und rote Trefferkante höchstens alle … s (≤ 2/s)
 
 # ---------------------------------------------------------------------------------------------
 #  Audio-Warnungen

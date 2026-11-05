@@ -8,6 +8,8 @@ static var _noise: Texture2D
 static var _spark_mat: StandardMaterial3D
 static var _smoke_mat: StandardMaterial3D
 static var _debris_meshes: Array = []
+static var _core_flash_ms: Array = []   ## Zeitpunkte der letzten grellen Explosionen (fotosicher, s. explosion)
+const MAX_HARD_PER_S := 3               ## höchstens so viele grelle Explosionen pro Sekunde, weitere weich
 
 
 static func _flip_shader() -> Shader:
@@ -43,9 +45,17 @@ static func _auto_free(node: Node, seconds: float) -> void:
 
 
 ## Große Explosion: Feuerball (Flipbook), Licht, Funken, Schockwelle, Trümmer, Rauch.
-static func explosion(parent: Node3D, pos: Vector3, size: float, color := Color(1.0, 0.55, 0.22), with_debris := true) -> void:
+## soft = ohne Kernblitz, Lichtpuls und Schockwelle (Folgeexplosionen). Fotosicher: höchstens MAX_HARD_PER_S
+## grelle Explosionen pro Sekunde – darüber hinaus wird jede weitere automatisch weich gezeichnet.
+static func explosion(parent: Node3D, pos: Vector3, size: float, color := Color(1.0, 0.55, 0.22), with_debris := true, soft := false) -> void:
 	if parent == null or not parent.is_inside_tree():
 		return
+	var now := Time.get_ticks_msec()
+	_core_flash_ms = _core_flash_ms.filter(func(ms): return now - int(ms) < 1000)
+	if not soft and _core_flash_ms.size() >= MAX_HARD_PER_S:
+		soft = true
+	if not soft:
+		_core_flash_ms.append(now)
 	var root := Node3D.new()
 	parent.add_child(root)
 	root.global_position = pos
@@ -87,25 +97,27 @@ static func explosion(parent: Node3D, pos: Vector3, size: float, color := Color(
 			var tw2 := q.create_tween().set_parallel(true)
 			tw2.tween_method(func(v): q.set_instance_shader_parameter("age", v), 0.0, 1.0, dur)
 			tw2.tween_property(q, "scale", Vector3.ONE * s * 1.3, dur).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
-	# Kernblitz
-	var core := Assets.glow_sprite(Color(1.0, 0.85, 0.6), size * 1.1, 2.6)
-	root.add_child(core)
-	var ct := core.create_tween()
-	ct.tween_property(core, "scale", Vector3.ONE * 1.2, 0.06)
-	ct.tween_property(core, "scale", Vector3.ONE * 0.01, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	# Licht
-	var light := OmniLight3D.new()
-	light.light_color = color.lightened(0.2)
-	light.light_energy = 6.0 + size * 0.4
-	light.omni_range = size * 9.0 + 20.0
-	light.shadow_enabled = false
-	root.add_child(light)
-	var lt := light.create_tween()
-	lt.tween_property(light, "light_energy", 0.0, 0.6 + size * 0.02).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
-	# Funken
-	sparks(root, Vector3.ZERO, color.lightened(0.4), int(clampf(size * 6.0, 18.0, 90.0)), 12.0 + size * 3.0, 0.18 + size * 0.02, 0.9)
-	# Schockwelle
-	shockwave(root, size * 3.2, color.lightened(0.3), 0.55)
+	if not soft:
+		# Kernblitz
+		var core := Assets.glow_sprite(Color(1.0, 0.85, 0.6), size * 1.1, 2.6)
+		root.add_child(core)
+		var ct := core.create_tween()
+		ct.tween_property(core, "scale", Vector3.ONE * 1.2, 0.06)
+		ct.tween_property(core, "scale", Vector3.ONE * 0.01, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		# Licht
+		var light := OmniLight3D.new()
+		light.light_color = color.lightened(0.2)
+		light.light_energy = 6.0 + size * 0.4
+		light.omni_range = size * 9.0 + 20.0
+		light.shadow_enabled = false
+		root.add_child(light)
+		var lt := light.create_tween()
+		lt.tween_property(light, "light_energy", 0.0, 0.6 + size * 0.02).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	# Funken (weich: weniger)
+	sparks(root, Vector3.ZERO, color.lightened(0.4), int(clampf(size * (3.0 if soft else 6.0), 12.0, 90.0)), 12.0 + size * 3.0, 0.18 + size * 0.02, 0.9)
+	if not soft:
+		# Schockwelle
+		shockwave(root, size * 3.2, color.lightened(0.3), 0.55)
 	# Rauch
 	if size >= 7.0:
 		smoke(root, size)

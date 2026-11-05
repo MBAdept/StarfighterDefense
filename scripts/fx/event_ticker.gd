@@ -16,18 +16,26 @@ func _ready() -> void:
 	GameState.event_logged.connect(_on_event)
 	GameState.alert_raised.connect(_on_alert)
 	# [Spielbeschreibung §12] Alarm bei Angriff auf eine Station – endet nach Config.alarm_duration
-	GameState.squadron_at_station.connect(func(_sq, _st): Audio.alarm(0.0))
+	# (bei gestörter Kommunikation nur, wenn die Meldung durchkommt)
+	GameState.squadron_at_station.connect(func(_sq, _st):
+		if not GameState.last_event_lost():
+			Audio.alarm(0.0))
 
 
+## Meldung aus GameState.log_event: bei gestörter Kommunikation verstümmelt oder ganz verloren.
 func _on_event(text: String, sev: int) -> void:
-	push(text, sev)
+	var shown := text
+	if not GameState.events.is_empty() and GameState.events.back().text == text:
+		shown = GameState.event_shown(GameState.events.back())
+	if shown != "":
+		push(shown, sev)
 
 
 ## Hinweiston für Warnmeldungen aus dem System. Der Geschoss-Warnton ("incoming") bleibt echten
 ## Geschossen vorbehalten; Ereignisse am aktuellen Ort vertont die Szene selbst.
 func _on_alert(kind: String, ref: int) -> void:
-	if kind == "station_attack":
-		return   # dafür gibt es den (zeitlich begrenzten) Alarm
+	if kind == "station_attack" or GameState.last_event_lost():
+		return   # Stationsangriff: dafür gibt es den (zeitlich begrenzten) Alarm; verlorene Meldung: kein Ton
 	var here := false
 	match kind:
 		"landing", "city":

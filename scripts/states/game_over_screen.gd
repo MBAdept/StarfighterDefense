@@ -56,6 +56,8 @@ func _ready() -> void:
 	var title := "SPIEL VORBEI"
 	var tcol := UITheme.RED
 	var reason := "Die Energie deines Schiffs ist erschöpft." if GameState.game_over_reason == "energy" else "Alle Städte des %s-Systems wurden zerstört." % GameState.STAR_NAME
+	if GameState.game_over_reason == "star":
+		reason = "Dein Schiff ist am Stern %s verglüht." % GameState.star_name()
 	if _kind == "victory":
 		title = "SIEG!"
 		tcol = UITheme.GREEN
@@ -160,6 +162,7 @@ func _build_evaluation() -> Control:
 		["Gerettete Planeten · verteidigte Stationen", "%d · %d" % [st.get("planets_saved", 0), st.get("stations_defended", 0)]],
 		["Bomben", bomb_line],
 		["Sprünge (davon zwischen den Systemen)", "%d (%d)" % [st.get("jumps", 0), st.get("enemy_jumps", 0)]],
+		["Sternbesuche · Systemschäden (repariert)", "%d · %d (%d)" % [st.get("star_visits", 0), st.get("damages", 0), st.get("repairs", 0)]],
 		["Erreichte Stufe · Schwierigkeit", "%d · %s" % [GameState.level + 1, Settings.DIFFICULTY_NAMES[clampi(Settings.difficulty, 0, 2)]]],
 	]
 	for e in extras:

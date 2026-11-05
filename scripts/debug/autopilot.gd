@@ -122,6 +122,7 @@ func _ready() -> void:
 	GameState.score_changed.connect(_on_score_changed)
 	GameState.squadron_spawned.connect(_on_squadron_spawned)
 	GameState.squadron_destroyed.connect(_on_squadron_destroyed)
+	GameState.damage_changed.connect(func(k): print("[%s] %s energy=%.1f" % [GameState.format_time(GameState.sim_time), ("DAMAGE " + k) if k != "" else "REPAIRED", GameState.energy]))
 	_h_roll_ion_tol()
 	var cfg := "mode=%s" % _mode_name()
 	if human:
@@ -214,6 +215,12 @@ func _release_steer() -> void:
 func _no_target(sc: CombatBase, delta: float) -> void:
 	_release()
 	_release_steer()
+	if GameState.player_loc == GameState.Loc.STAR:
+		# Stern [0.12.0]: volltanken, aber spätestens bei halber Hitze weg (die Hitze steigt auch auf der Karte)
+		if (GameState.energy >= Config.energy_max - 0.5 or GameState.star_heat >= 0.5) and Main.instance.can_open_map():
+			_decide_t = 0.0
+			Main.instance.open_map()
+		return
 	_decide_t += delta
 	if _decide_t > 3.0:
 		_decide_t = 0.0
@@ -311,7 +318,9 @@ func _fly_human(sc: CombatBase, delta: float) -> void:
 		_h_target = null
 	# Energie kritisch: Kampf abbrechen und tanken (Kartenlogik wählt dann die Station); nicht an einer
 	# Station selbst (dort wird nach dem Kampf ohnehin getankt) und nicht im gesperrten Orbit-Kampf
-	if h_flee > 0.0 and GameState.energy < h_flee and GameState.player_loc != GameState.Loc.STATION and _station_left() and Main.instance.can_open_map():
+	# (am Stern nicht: dort wird getankt; ohne Stationen ist der Stern das Fluchtziel)
+	if h_flee > 0.0 and GameState.energy < h_flee and GameState.player_loc != GameState.Loc.STATION and GameState.player_loc != GameState.Loc.STAR \
+			and (_station_left() or Config.star_refuel_enabled) and Main.instance.can_open_map():
 		_flees += 1
 		print("[%s] FLEE energy=%.1f from=%s" % [GameState.format_time(GameState.sim_time), GameState.energy, _cur.name.replace(" ", "_") if _cur else "-"])
 		_release()
@@ -605,19 +614,41 @@ func _choose_jump() -> void:
 			threat = true
 	if raid_safe and _home_threat_eta() <= safe_eta:
 		threat = true   # Verteidigung zuerst: erst die anfliegenden Schwadrone
-	if raid and not threat and energy >= raid_energy and GameState.bombs >= mini(8, Config.bombs_max) and Config.enemy_system_enabled:
+	if raid and not threat and energy >= raid_energy and GameState.bombs >= mini(8, Config.bombs_max) and Config.enemy_system_enabled \
+			and GameState.damage != "bombs":
 		_raids += 1
 		print("[%s] RAID_START n=%d energy=%.1f bombs=%d enemy_cities=%d/%d" % [GameState.format_time(GameState.sim_time), _raids, energy, GameState.bombs, GameState.enemy_cities_alive(), GameState.enemy_cities_total()])
 		_do_jump(GameState.Loc.ENEMY_SYSTEM, -1, _raid)
 		return
 	# wenig Energie (bzw. bei Angriffen aufs Feindsystem: zu wenige Bomben) → nächste Station
-	var rearm := raid and not threat and GameState.bombs < mini(8, Config.bombs_max) and Config.enemy_system_enabled
-	if energy < 45.0 or rearm or (raid and not threat and energy < raid_energy):
+	var any_station := false
+	for st0 in GameState.stations:
+		if not st0.destroyed:
+			any_station = true
+	# Bomben gibt es nur an Stationen: ohne Station kein Nachladen (sonst nie wieder zum Stern)
+	var rearm := any_station and raid and not threat and GameState.bombs < mini(8, Config.bombs_max) and Config.enemy_system_enabled
+	# Systemschaden [0.12.0]: klemmender Bombenschacht vor dem nächsten Angriff, gestörte Sicht (Mensch) sofort reparieren
+	var dmg := GameState.damage
+	var repair_now := any_station and not threat and ((dmg == "bombs" and raid) or (dmg == "screen" and human))
+	var raid_possible := any_station or GameState.bombs >= mini(8, Config.bombs_max)
+	if energy < 45.0 or rearm or repair_now or (raid and raid_possible and not threat and energy < raid_energy):
 		var best: StationData = null
 		for s in GameState.stations:
-			if not s.destroyed and (best == null or s.map_pos().distance_to(me) < best.map_pos().distance_to(me)):
+			if s.destroyed or (energy < 30.0 and s.attacker != -1):
+				continue   # mit wenig Energie nicht mitten in einen Stationskampf springen
+			if best == null or s.map_pos().distance_to(me) < best.map_pos().distance_to(me):
 				best = s
+		# nur Energie nötig und der Stern liegt nicht weiter weg: dort schnell tanken (ohne Reparatur und Bomben)
+		if not rearm and not repair_now and Config.star_refuel_enabled and GameState.player_loc != GameState.Loc.STAR \
+				and (best == null or GameState.jump_cost_to(GameState.Loc.STAR, GameState.STAR_POS) <= GameState.jump_cost_to(GameState.Loc.STATION, best.map_pos()) + 0.5):
+			_star_trips += 1
+			print("[%s] STAR_TRIP system=0 energy_before=%.1f" % [GameState.format_time(GameState.sim_time), energy])
+			_do_jump(GameState.Loc.STAR, 0, null)
+			return
 		if best:
+			if repair_now:
+				_repair_trips += 1
+				print("[%s] REPAIR_TRIP damage=%s station=%s" % [GameState.format_time(GameState.sim_time), dmg, best.name.replace(" ", "_")])
 			if GameState.is_player_at_station(best.id):
 				Main.instance.close_map()
 				return
@@ -653,6 +684,17 @@ func _choose_jump() -> void:
 	if target_sq:
 		print("[%s] JUMP squadron %s state=%d (energy %.1f)" % [GameState.format_time(GameState.sim_time), target_sq.name, target_sq.state, energy])
 		_do_jump(GameState.Loc.SQUADRON, target_sq.id, _acct_for(target_sq))
+	elif GameState.player_loc == GameState.Loc.STAR:
+		# [0.12.0] nie am Stern bleiben (Hitze): ohne Ziel zur nächsten Station, sonst zum Heimatplaneten
+		var park: StationData = null
+		for s2 in GameState.stations:
+			if not s2.destroyed and (park == null or s2.map_pos().distance_to(me) < park.map_pos().distance_to(me)):
+				park = s2
+		print("[%s] STAR_LEAVE idle energy=%.1f heat=%.2f" % [GameState.format_time(GameState.sim_time), energy, GameState.star_heat])
+		if park:
+			_do_jump(GameState.Loc.STATION, park.id, null)
+		else:
+			_do_jump(GameState.Loc.PLANET, GameState.home_planet().id, null)
 	else:
 		Main.instance.close_map()
 
@@ -660,6 +702,13 @@ func _choose_jump() -> void:
 ## Feindsystem: Empfangskomitee abwarten, Planeten mit Bomben angreifen, zum Nachladen zurück.
 func _choose_enemy_jump() -> void:
 	var energy := GameState.energy
+	if not GameState.reception_active and Config.star_refuel_enabled and GameState.player_loc != GameState.Loc.STAR \
+			and energy < Config.enemy_jump_cost + 25.0:
+		# [0.12.0] vor dem teuren Rücksprung (bzw. dem nächsten Angriff) erst am Stern Vorrhal tanken
+		_star_trips += 1
+		print("[%s] STAR_TRIP system=1 reason=low energy_before=%.1f bombs=%d" % [GameState.format_time(GameState.sim_time), energy, GameState.bombs])
+		_do_jump(GameState.Loc.STAR, 1, _raid)
+		return
 	if raid_safe and _home_threat_eta() < safe_return_eta:
 		_defend_returns += 1
 		print("[%s] RAID_RETURN reason=defend eta=%.0f energy=%.1f bombs=%d" % [GameState.format_time(GameState.sim_time), _home_threat_eta(), energy, GameState.bombs])
@@ -683,7 +732,18 @@ func _choose_enemy_jump() -> void:
 			print("[%s] RAID_INTERCEPT %s energy=%.1f" % [GameState.format_time(GameState.sim_time), isq.name, energy])
 			_do_jump(GameState.Loc.SQUADRON, isq.id, _acct_for(isq))
 			return
+	if GameState.has_damage("bombs"):
+		print("[%s] RAID_RETURN reason=jam energy=%.1f bombs=%d" % [GameState.format_time(GameState.sim_time), energy, GameState.bombs])
+		_do_jump(GameState.Loc.HOME_SYSTEM, -1, _raid)
+		return
 	var target := _raid_planet()
+	if raid and target != null and energy < raid_return and GameState.bombs > 0 and Config.star_refuel_enabled \
+			and GameState.player_loc != GameState.Loc.STAR:
+		# [0.12.0] am Stern Vorrhal schnell tanken statt nach Helion zurückzuspringen
+		_star_trips += 1
+		print("[%s] STAR_TRIP system=1 energy_before=%.1f bombs=%d" % [GameState.format_time(GameState.sim_time), energy, GameState.bombs])
+		_do_jump(GameState.Loc.STAR, 1, _raid)
+		return
 	if not raid or target == null or energy < raid_return or GameState.bombs <= 0:
 		print("[%s] RAID_RETURN energy=%.1f bombs=%d enemy_cities=%d/%d" % [GameState.format_time(GameState.sim_time), energy, GameState.bombs, GameState.enemy_cities_alive(), GameState.enemy_cities_total()])
 		_do_jump(GameState.Loc.HOME_SYSTEM, -1, _raid)
@@ -774,7 +834,7 @@ func _enemy_planet(sc: PlanetCombat, delta: float) -> bool:
 	if fighters > 0:
 		_set_weapon(sc, CombatBase.Weapon.LASER)
 		return false
-	if sc.planet.alive_cities() == 0 or GameState.bombs <= 0 or GameState.game_over:
+	if sc.planet.alive_cities() == 0 or GameState.bombs <= 0 or GameState.game_over or GameState.has_damage("bombs"):
 		_set_weapon(sc, CombatBase.Weapon.LASER)
 		_no_target(sc, delta)
 		return true
@@ -865,6 +925,7 @@ func _set_weapon(sc: CombatBase, w: int) -> void:
 ## Sprung mit Buchung der Sprungkosten (a = Konto des Ziel-Schwadrons, null = Tankfahrt/Sonstiges).
 func _do_jump(kind: int, id: int, a: Acct) -> void:
 	var e0 := GameState.energy
+	_decide_t = 0.0   # Wartezeiten am Ziel ab Ankunft zählen (nicht schon während des Hyperraums)
 	_jump_acct = a
 	_in_jump = true
 	Main.instance.request_jump(kind, id)
@@ -919,6 +980,8 @@ var _seen_p := {}              ## eigene Geschosse (Instanz-ID)
 var _dhl := {}                 ## DestroyerData-ID → zuletzt gesehene hits_left
 var _orbit_reported := false
 var _refuel_trips := 0
+var _star_trips := 0           ## Schnelltanken am Stern (0.12.0)
+var _repair_trips := 0         ## Stationsbesuche wegen eines Systemschadens
 var _flees := 0
 var _evade_attempts := 0
 var _evading_time := 0.0
@@ -940,6 +1003,8 @@ func _acct_reset() -> void:
 	_dhl.clear()
 	_orbit_reported = false
 	_refuel_trips = 0
+	_star_trips = 0
+	_repair_trips = 0
 	_flees = 0
 	_evade_attempts = 0
 	_evading_time = 0.0
@@ -1226,6 +1291,10 @@ func _print_summary() -> void:
 		laser[0], laser[1], ion[0], ion[1], _evade_attempts, _evading_time / maxf(_combat_time, 0.001), _orbit.cost,
 		1 if GameState.game_over else 0, GameState.game_over_reason if GameState.game_over else "-", GameState.score,
 		GameState.total_alive_cities(), GameState.total_cities(), GameState.energy])
+	var st0: Dictionary = GameState.stats
+	print("DAMAGE_SUMMARY damages=%d kinds=%s repairs=%d repair_trips=%d star_trips=%d star_visits=%d star_energy=%.1f active=%s" % [
+		int(st0.get("damages", 0)), str(st0.get("damage_kinds", {})).replace(" ", ""), int(st0.get("repairs", 0)), _repair_trips,
+		_star_trips, int(st0.get("star_visits", 0)), float(st0.get("star_energy", 0.0)), GameState.damage if GameState.damage != "" else "-"])
 	if raid or int(GameState.stats.get("enemy_jumps", 0)) > 0:
 		var st: Dictionary = GameState.stats
 		print("SAFE_SUMMARY safe=%d intercept=%d defend_returns=%d intercepts=%d cities_lost=%d" % [1 if raid_safe else 0, 1 if raid_intercept else 0, _defend_returns, _intercepts, int(GameState.stats.get("cities_lost", 0))])

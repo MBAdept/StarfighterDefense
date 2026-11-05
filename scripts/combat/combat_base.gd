@@ -15,6 +15,8 @@ var fx_root: Node3D
 var shots: ShotSystem
 var hud_layer: CanvasLayer
 var hud: HudBase
+var view_fx_layer: CanvasLayer   ## Sichtstörung (Systemschaden) zwischen 3D-Szene und HUD
+var view_fx: ViewFX
 var enemies: Array = []
 var frozen := false
 var dying := false
@@ -51,6 +53,12 @@ var victory_mode := false
 var _victory_cb: Callable
 var _victory_t := 0.0
 var _unfreeze_frame := -1     ## Bild, in dem die Karte geschlossen wurde (Feuer dieses Bildes gilt der Karte)
+var _flash_cd := 0.0          ## fotosicher: höchstens ein Trefferblitz je Config.hit_flash_min_gap Sekunden
+var _flash_pending := false   ## schwerer Treffer im Mindestabstand: Blitz zum nächsten erlaubten Zeitpunkt
+var _flash_pending_color := Color()
+var _death_next := 0.0        ## Sekunden bis zur nächsten (weichen) Explosion im Untergang
+var _sway_t := 0.0            ## Zeit für das weiche Schwanken im Untergang
+var _death_sway := 0.0        ## Ausschlag des weichen Schwankens im Untergang (shake selbst klingt normal ab)
 
 
 static func dir_from_angles(yaw: float, pitch: float) -> Vector3:
@@ -70,6 +78,12 @@ func _ready() -> void:
 	_build_world()
 	shots = ShotSystem.new(self)
 	add_child(shots)
+	view_fx_layer = CanvasLayer.new()
+	view_fx_layer.layer = 2   # über der 3D-Szene und der Nachbearbeitung (1), unter dem HUD (5)
+	add_child(view_fx_layer)
+	view_fx = ViewFX.new()
+	view_fx.combat = self
+	view_fx_layer.add_child(view_fx)
 	hud_layer = CanvasLayer.new()
 	hud_layer.layer = 5
 	add_child(hud_layer)
@@ -123,6 +137,9 @@ func set_frozen(f: bool) -> void:
 	process_mode = Node.PROCESS_MODE_DISABLED if f else Node.PROCESS_MODE_INHERIT
 	visible = not f
 	hud_layer.visible = not f
+	view_fx_layer.visible = not f
+	if f:
+		clear_pending_hit_feedback()   # kein „Phantomtreffer“ nach dem Schließen der Karte
 	camera.current = not f
 	if f:
 		Audio.stop_all_loops(0.15)
@@ -130,6 +147,13 @@ func set_frozen(f: bool) -> void:
 		_unfreeze_frame = Engine.get_process_frames()
 		Audio.loop_start("engine", "engine_loop", 0.0, 0.5)
 		_on_unfrozen()
+
+
+## Nachgeholte Trefferrückmeldung (schwerer Treffer im Mindestabstand) verwerfen: Karte, Pause, Untergang.
+func clear_pending_hit_feedback() -> void:
+	_flash_pending = false
+	if hud:
+		hud.clear_pending_hit()
 
 
 ## Feuer-Tastendruck dieses Bildes – außer er hat gerade die Karte geschlossen (sonst fiele eine Bombe).
@@ -267,7 +291,11 @@ func _update_weapons(delta: float) -> void:
 		return
 	if weapon == Weapon.BOMB:
 		if _fire_just_pressed():
-			if GameState.bombs <= 0:
+			if GameState.has_damage("bombs"):
+				# [Vorgabe 0.12.0] Systemschaden: Bombenabwurf blockiert bis zur Reparatur an einer Station
+				Audio.sfx("bomb_empty" if Audio.has_sound("bomb_empty") else "ui_error", -4.0, 0.8, 0.0, "UI")
+				hud.show_message("BOMBENSCHACHT KLEMMT", "Reparatur nur beim Andocken an einer Station", 2.2, UITheme.RED, true)
+			elif GameState.bombs <= 0:
 				Audio.sfx("bomb_empty" if Audio.has_sound("bomb_empty") else "ui_error", -4.0, 1.0, 0.0, "UI")
 				hud.show_message("KEINE BOMBEN MEHR", "Nachladen nur beim Andocken an eigenen Stationen", 2.2, UITheme.AMBER, true)
 			elif bomb_cd > 0.0:
@@ -307,7 +335,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			Audio.ui("ui_select")
 		if weapon == Weapon.BOMB:
-			if GameState.bombs > 0:
+			if GameState.has_damage("bombs"):
+				hud.show_message("BOMBENSCHACHT KLEMMT", "%d an Bord · Reparatur nur beim Andocken an einer Station" % GameState.bombs, 1.8, UITheme.RED, true)
+			elif GameState.bombs > 0:
 				hud.show_message("BOMBEN SCHARF", "%d an Bord · Aufschlagmarke auf eine Stadt, dann FEUER" % GameState.bombs, 1.6, UITheme.AMBER, true)
 			else:
 				hud.show_message("KEINE BOMBEN MEHR", "Nachladen nur beim Andocken an eigenen Stationen", 1.8, UITheme.AMBER, true)
@@ -332,22 +362,66 @@ func player_hit(damage: float, kind: int, _dir: Vector3) -> void:
 	if dying or GameState.game_over:
 		return
 	var heavy := kind != ShotSystem.Kind.E_FIGHTER
+	var before := GameState.energy
 	GameState.change_energy(-damage)
+	if dying or GameState.game_over:
+		return   # tödlicher Treffer: die Untergangssequenz übernimmt jede Rückmeldung (kein nachgeholter Treffer)
+	# fotosicher: Farbblitz höchstens alle hit_flash_min_gap Sekunden (≤ 2 pro Sekunde), kein gesättigtes Rot
+	var may_flash := _flash_cd <= 0.0
+	if may_flash:
+		_flash_cd = Config.hit_flash_min_gap
 	if heavy:
 		Audio.sfx("player_hit_heavy", 2.0)
 		shake = maxf(shake, 1.4 if kind == ShotSystem.Kind.E_FLAGSHIP else 1.0)
-		flash = 0.65
-		flash_color = Color(1.0, 0.35, 0.2) if kind != ShotSystem.Kind.E_FLAGSHIP else Color(1.0, 0.5, 0.9)
+		var fc := Color(1.0, 0.56, 0.36) if kind != ShotSystem.Kind.E_FLAGSHIP else Color(1.0, 0.62, 0.9)
+		if may_flash:
+			flash = 0.5
+			flash_color = fc
+		else:
+			_flash_pending = true
+			_flash_pending_color = fc
 		aberr = 1.0
 		noise_lines = 1.0
 		hud.on_player_hit(true, damage)
 	else:
 		Audio.sfx("player_hit_light", 0.0, 1.0, 0.08)
 		shake = maxf(shake, 0.4)
-		flash = maxf(flash, 0.25)
-		flash_color = Color(1.0, 0.4, 0.3)
+		if may_flash:
+			flash = maxf(flash, 0.18)
+			flash_color = Color(1.0, 0.62, 0.45)
 		aberr = maxf(aberr, 0.35)
 		hud.on_player_hit(false, damage)
+	_check_system_damage(before)
+
+
+## [Vorgabe 0.12.0] Systemschaden: Unter Config.damage_energy_threshold kann jeder weitere Treffer EIN Bordsystem
+## beschädigen (höchstens ein Schaden gleichzeitig, Reparatur nur an einer Station).
+func _check_system_damage(before: float) -> void:
+	if GameState.game_over or dying or not Config.damage_enabled:
+		return
+	var k := GameState.roll_damage(before)
+	if k != "":
+		on_system_damaged(k)
+	elif before >= Config.damage_energy_threshold and GameState.energy < Config.damage_energy_threshold and GameState.damage == "":
+		hud.show_message("ENERGIE UNTER %d %%" % int(Config.damage_energy_threshold), "Treffer können jetzt Bordsysteme beschädigen", 2.2, UITheme.AMBER, true)
+
+
+func on_system_damaged(k: String) -> void:
+	Audio.sfx("system_damage" if Audio.has_sound("system_damage") else "ui_error", 0.0)
+	shake = maxf(shake, 0.8)
+	var title := "%s BESCHÄDIGT" % GameState.damage_name(k)
+	var sub := "Reparatur nur beim Andocken an einer Station"
+	match k:
+		"bombs":
+			title = "BOMBENSCHACHT BESCHÄDIGT"
+			sub = "Bomben klemmen – Reparatur nur beim Andocken an einer Station"
+		"screen":
+			title = "SICHTSYSTEM GESTÖRT"
+			sub = "Außensicht gestört – Reparatur nur beim Andocken an einer Station"
+		"comms":
+			title = "KOMMUNIKATION GESTÖRT"
+			sub = "Meldungen von außen fehlen oder sind verstümmelt – Reparatur an einer Station"
+	hud.show_message(title, sub, 3.2, UITheme.RED)
 
 
 func on_near_miss(kind: int) -> void:
@@ -420,12 +494,30 @@ func _update_low_energy(delta: float) -> void:
 func _update_post(delta: float) -> void:
 	shake = maxf(shake - delta * 2.2, 0.0)
 	flash = maxf(flash - delta * 1.8, 0.0)
+	_flash_cd = maxf(_flash_cd - delta, 0.0)
+	if _flash_pending and _flash_cd <= 0.0 and not dying:
+		_flash_pending = false
+		_flash_cd = Config.hit_flash_min_gap
+		flash = maxf(flash, 0.5)
+		flash_color = _flash_pending_color
 	aberr = maxf(aberr - delta * 1.5, 0.0)
 	noise_lines = maxf(noise_lines - delta * 1.6, 0.0)
 	var s := shake * shake * Config.screen_shake
-	camera.h_offset = randf_range(-1, 1) * s * 0.25
-	camera.v_offset = randf_range(-1, 1) * s * 0.25
-	hud.shake_offset = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * s * 9.0
+	if dying:
+		# fotosicher: im Untergang weiches Schwanken (≤ 1,3 Hz) statt Zittern von Bild zu Bild. Eigener Ausschlag:
+		# shake (das schnelle Cockpitzittern der Explosion) klingt wie bei einem schweren Treffer nach ~0,7 s ab.
+		_sway_t += delta
+		var sv := maxf(shake, _death_sway)
+		var s2 := sv * sv * Config.screen_shake
+		var sw := Vector2(sin(_sway_t * TAU * 1.3) * 0.6 + sin(_sway_t * TAU * 0.7 + 1.1) * 0.4,
+			sin(_sway_t * TAU * 0.9 + 0.4) * 0.6 + sin(_sway_t * TAU * 0.5 + 2.0) * 0.4)
+		camera.h_offset = sw.x * s2 * 0.2
+		camera.v_offset = sw.y * s2 * 0.2
+		hud.shake_offset = sw * s2 * 6.0
+	else:
+		camera.h_offset = randf_range(-1, 1) * s * 0.25
+		camera.v_offset = randf_range(-1, 1) * s * 0.25
+		hud.shake_offset = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * s * 9.0
 	var pf: ColorRect = Main.instance.postfx if Main.instance else null
 	if pf:
 		var m := pf.material as ShaderMaterial
@@ -572,36 +664,50 @@ func play_death_sequence(cb: Callable, reason := "energy") -> void:
 	controls_enabled = false
 	fire_enabled = false
 	Audio.stop_all_loops(1.5)
+	clear_pending_hit_feedback()
 	if reason == "cities":
 		# [ORIGINAL] verloren, wenn alle Städte zerstört sind – das eigene Schiff bleibt dabei heil
 		hud.show_message("%s GEFALLEN" % GameState.STAR_NAME.to_upper(), "Alle Städte des %s-Systems sind zerstört" % GameState.STAR_NAME, 4.0, UITheme.RED)
 		Audio.sfx("city_destroyed", 0.0, 0.8)
 		flash = 0.4
-		flash_color = Color(0.6, 0.1, 0.1)
+		flash_color = Color(0.6, 0.28, 0.22)   # kein gesättigtes Rot (fotosicher)
 		return
 	Audio.sfx("player_hit_heavy", 4.0, 0.8)
 	Audio.sfx("explosion_large", 4.0, 0.7, 0.0, "SFX", 2)
-	hud.show_message("ENERGIE ERSCHÖPFT", "Das Schiff verliert die Kontrolle …", 4.0, UITheme.RED)
-	shake = 2.0
+	if reason == "star":
+		hud.show_message("SCHIFF VERGLÜHT", "Zu lange am Stern %s geblieben …" % GameState.star_name(), 4.0, UITheme.RED)
+	else:
+		hud.show_message("ENERGIE ERSCHÖPFT", "Das Schiff verliert die Kontrolle …", 4.0, UITheme.RED)
+	shake = 1.6
 	flash = 1.0
-	flash_color = Color(1.0, 0.3, 0.1)
+	flash_color = Color(1.0, 0.52, 0.32)   # einzelner Blitz, kein gesättigtes Rot (fotosicher)
+	noise_lines = 0.6
+	aberr = 1.0
+	# eine grelle Explosion vor dem Cockpit, danach nur noch weiche, entferntere (siehe _update_death)
+	Effects.explosion(fx_root, camera.global_position + camera.global_transform.basis * Vector3(randf_range(-4, 4), -1.5, -22.0), 8.0, Color(1.0, 0.5, 0.2), false)
+	_death_next = 0.8
 
 
 func _update_death(delta: float) -> void:
 	_death_t += delta
-	if _death_reason != "energy":
+	if _death_reason != "energy" and _death_reason != "star":
 		if _death_t > 3.2 and _death_cb.is_valid():
 			var cb0 := _death_cb
 			_death_cb = Callable()
 			cb0.call()
 		return
-	shake = maxf(shake, 1.2 - _death_t * 0.2)
-	noise_lines = 1.0
-	aberr = 1.0
-	camera.rotation.z += delta * 0.6
-	if fmod(_death_t, 0.45) < delta:
-		Effects.explosion(fx_root, camera.global_position + camera.global_transform.basis * Vector3(randf_range(-6, 6), randf_range(-4, 3), -randf_range(8, 16)), randf_range(4, 9), Color(1.0, 0.5, 0.2), false)
+	# fotosicher: ruhiges Ausklingen statt Explosionsgewitter – weiches Schwanken, langsames Rollen, Abdunkeln;
+	# Nachexplosionen weich (ohne Kernblitz, Licht, Schockwelle), weiter weg und höchstens alle 0,8 s
+	_death_sway = maxf(1.0 - _death_t * 0.25, 0.0)
+	camera.rotation.z += delta * 0.45
+	_death_next -= delta
+	if _death_next <= 0.0 and _death_t < 2.6:
+		_death_next = 0.8
+		var at := camera.global_position + camera.global_transform.basis * Vector3(randf_range(-14, 14), randf_range(-6, 4), -randf_range(28, 40))
+		Effects.explosion(fx_root, at, randf_range(5.0, 9.0), Color(1.0, 0.5, 0.2), false, true)
 		Audio.sfx("explosion_small", 0.0, 0.8, 0.1, "SFX", 3)
+	if env:
+		env.adjustment_brightness = lerpf(1.0, 0.4, clampf(_death_t / 3.2, 0.0, 1.0))
 	if _death_t > 3.2 and _death_cb.is_valid():
 		var cb := _death_cb
 		_death_cb = Callable()

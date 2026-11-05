@@ -1,13 +1,17 @@
 shader_type canvas_item;
 // Hyperraumsprung: radial auseinanderlaufende Sternstreifen, Tunnelleuchten und Weißblitz.
 // intensity 0..1 (Streifenlänge/Tempo), flash 0..1 (Weißblende), fade 0..1 (Gesamtdeckkraft)
+// phase: Streifenfortschritt, auf der CPU integriert (TransitionOverlay) – fotosicher: kein Springen der Streifen,
+// jede Streifenspitze läuft höchstens ~2,3-mal pro Sekunde über einen Bildpunkt, ruhiges Tunnelleuchten,
+// mäßiger Kontrast, kein gesättigtes Rot.
 
 uniform float intensity = 0.0;
 uniform float flash = 0.0;
 uniform float fade = 0.0;
 uniform float aspect = 1.7778;
+uniform float phase = 0.0;
 uniform vec3 tint = vec3(0.55, 0.8, 1.0);
-uniform vec3 flash_color = vec3(1.0, 1.0, 1.0);   // Farbe der Blende (rot beim Sprung ins Feindsystem)
+uniform vec3 flash_color = vec3(1.0, 1.0, 1.0);   // Farbe der Blende (lachsfarben beim Sprung ins Feindsystem)
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 
@@ -33,18 +37,18 @@ float layer(vec2 uv, float sectors, float seed, float t) {
 
 void fragment() {
 	vec2 uv = (UV - 0.5) * vec2(aspect, 1.0);
-	float t = TIME * (0.6 + intensity * 2.4);
+	float t = phase;
 	float s = layer(uv, 180.0, 1.0, t) + layer(uv, 310.0, 7.0, t * 1.3) * 0.7 + layer(uv, 90.0, 3.0, t * 0.8) * 0.9;
 	float r = length(uv);
-	vec3 col = tint * s * (1.2 + 2.0 * intensity);
-	// Tunnelglühen
-	col += tint * 0.35 * intensity * smoothstep(0.9, 0.0, r) * (0.6 + 0.4 * sin(r * 40.0 - TIME * 30.0));
+	vec3 col = tint * s * (0.9 + 1.1 * intensity);
+	// Tunnelglühen: wenige breite Ringe, langsam (≤ ~1,1 Hz)
+	col += tint * 0.35 * intensity * smoothstep(0.9, 0.0, r) * (0.8 + 0.2 * sin(r * 14.0 - phase * 5.0));
 	col += vec3(1.0) * pow(smoothstep(0.5, 0.0, r), 2.0) * intensity * 0.8;
 	float a = clamp(max(s, intensity * 0.55) * fade, 0.0, 1.0);
 	col = mix(col, flash_color, flash);
 	a = max(a, flash);
-	// Hintergrund abdunkeln, damit die Streifen tragen
-	vec3 bg = vec3(0.0, 0.01, 0.03);
+	// Hintergrund abdunkeln, damit die Streifen tragen – aber nicht ganz schwarz (geringerer Kontrast)
+	vec3 bg = vec3(0.0, 0.01, 0.03) + tint * 0.07 * intensity;
 	float bga = fade * intensity * 0.85;
 	vec3 outc = mix(bg, col, clamp(s + flash + intensity * 0.3, 0.0, 1.0));
 	COLOR = vec4(outc, clamp(max(a, bga), 0.0, 1.0));

@@ -31,6 +31,7 @@ var _front: Control
 var _bg: TextureRect
 var _message := ""
 var _message_t := 10.0
+var _star_beep := 0.0           ## Warnton am Stern (die Kampfszene ist bei offener Karte eingefroren)
 var _f_title: Font
 var _f_disp: Font
 var _f_body: Font
@@ -226,6 +227,9 @@ func _rebuild_targets() -> void:
 	for sq in _view_squadrons():
 		_targets.append({"kind": GameState.Loc.SQUADRON, "id": sq.id, "pos": _squadron_screen(sq)})
 	_targets.append({"kind": _gate_kind(), "id": -1, "pos": to_screen(_gate_pos())})
+	if Config.star_refuel_enabled:
+		# [Vorgabe] Stern: Schnelltanken (id = System)
+		_targets.append({"kind": GameState.Loc.STAR, "id": view_system, "pos": to_screen(GameState.STAR_POS)})
 
 
 func _squadron_screen(sq: SquadronData) -> Vector2:
@@ -264,7 +268,7 @@ func _select_initial() -> void:
 		_select(GameState.Loc.HOME_SYSTEM, -1, false)   # während des Empfangskomitees nur Rücksprung
 		return
 	match GameState.player_loc:
-		GameState.Loc.PLANET, GameState.Loc.STATION, GameState.Loc.SQUADRON, GameState.Loc.ENEMY_PLANET:
+		GameState.Loc.PLANET, GameState.Loc.STATION, GameState.Loc.SQUADRON, GameState.Loc.ENEMY_PLANET, GameState.Loc.STAR:
 			if _target_valid(GameState.player_loc, GameState.player_loc_id):
 				_select(GameState.player_loc, GameState.player_loc_id, false)
 				return
@@ -273,7 +277,7 @@ func _select_initial() -> void:
 	var bd := INF
 	var me := to_screen(GameState.player_map_pos if not is_foreign_view() else _gate_pos())
 	for t in _targets:
-		if t.kind == GameState.Loc.ENEMY_SYSTEM or t.kind == GameState.Loc.HOME_SYSTEM:
+		if t.kind == GameState.Loc.ENEMY_SYSTEM or t.kind == GameState.Loc.HOME_SYSTEM or t.kind == GameState.Loc.STAR:
 			continue
 		var d: float = t.pos.distance_to(me)
 		if t.kind == GameState.Loc.SQUADRON:
@@ -346,6 +350,8 @@ func _sel_map_pos() -> Vector2:
 			return sq.map_pos if sq else GameState.player_map_pos
 		GameState.Loc.ENEMY_SYSTEM:
 			return GameState.JUMP_POINT
+		GameState.Loc.STAR:
+			return GameState.STAR_POS
 	return GameState.player_map_pos
 
 
@@ -449,9 +455,22 @@ func _target_at(p: Vector2) -> Dictionary:
 # =============================================================================================
 #  Zeichnen
 # =============================================================================================
+## Stern: die Hitze steigt auch bei offener Karte (und beim Blick ins andere System) – dann warnt die Karte selbst,
+## im selben Takt wie die Kampfszene (die ist bei offener Karte eingefroren).
+func _update_star_warning(delta: float) -> void:
+	if not is_visible_in_tree() or get_tree().paused or not GameState.is_at_star() or GameState.star_heat < Config.star_heat_warning:
+		_star_beep = 0.0
+		return
+	_star_beep -= delta
+	if _star_beep <= 0.0:
+		_star_beep = lerpf(0.9, 0.35, clampf((GameState.star_heat - Config.star_heat_warning) / maxf(1.0 - Config.star_heat_warning, 0.01), 0.0, 1.0))
+		Audio.sfx("warning_low_energy", -3.0, 1.2, 0.0, "UI")
+
+
 func _process(delta: float) -> void:
 	_t += delta
 	_message_t += delta
+	_update_star_warning(delta)
 	_rebuild_targets()
 	if not _target_valid(sel_kind, sel_id):
 		_select_initial()
@@ -612,6 +631,8 @@ func _draw_front() -> void:
 			s2 += 30.0
 		elif sel_kind == GameState.Loc.HOME_SYSTEM:
 			s2 += 14.0
+		elif sel_kind == GameState.Loc.STAR:
+			s2 += 60.0 * map_scale / 0.9 * (0.72 if view_system == 1 else 1.0)
 		var col := UITheme.CYAN
 		for i in 4:
 			var d := Vector2(1, 1).rotated(i * PI * 0.5)
@@ -624,11 +645,26 @@ func _draw_front() -> void:
 	if _message_t < 2.5:
 		var a := clampf(2.5 - _message_t, 0.0, 1.0)
 		_text(f, Vector2(0, vp.y * 0.5), _message, _f_disp, 30, Color(UITheme.AMBER, a), HORIZONTAL_ALIGNMENT_CENTER, vp.x - PANEL_W)
+	# Hinweiszeilen unter der Kopfleiste, untereinander: Ansicht des anderen Systems, Stern-Hitze (immer – auch beim
+	# Blick ins andere System steigt sie weiter), Empfangskomitee, Systemschaden
+	var by := TOP_H + 40.0
 	if is_foreign_view():
 		var bl := "ANSICHT %s – NUR BEOBACHTUNG · Q/TAB: ZURÜCK" % ("FEINDSYSTEM" if enemy_view else "%s-SYSTEM" % GameState.STAR_NAME.to_upper())
-		_text(f, Vector2(0, TOP_H + 40), bl, _f_disp, 20, Color(UITheme.AMBER, 0.6 + 0.3 * sin(_t * 3.0)), HORIZONTAL_ALIGNMENT_CENTER, vp.x - PANEL_W)
-	elif GameState.reception_active:
-		_text(f, Vector2(0, TOP_H + 40), "EMPFANGSKOMITEE AKTIV – NUR RÜCKSPRUNG MÖGLICH", _f_disp, 20, Color(UITheme.RED, 0.6 + 0.3 * sin(_t * 4.0)), HORIZONTAL_ALIGNMENT_CENTER, vp.x - PANEL_W)
+		_text(f, Vector2(0, by), bl, _f_disp, 20, Color(UITheme.AMBER, 0.6 + 0.3 * sin(_t * 3.0)), HORIZONTAL_ALIGNMENT_CENTER, vp.x - PANEL_W)
+		by += 30.0
+	if GameState.is_at_star():
+		var hp := int(round(GameState.star_heat * 100.0))
+		var hot := GameState.star_heat >= Config.star_heat_warning
+		var hl := ("HITZE %d %% – SOFORT SPRINGEN! (noch %.1f s)" if hot else "AM STERN · HITZE %d %% · noch %.1f s") % [hp, GameState.star_time_left()]
+		_text(f, Vector2(0, by), hl, _f_disp, 22, Color(UITheme.RED if hot else UITheme.AMBER, 0.75 + 0.25 * sin(_t * 6.0)), HORIZONTAL_ALIGNMENT_CENTER, vp.x - PANEL_W)
+		by += 30.0
+	elif GameState.reception_active and not is_foreign_view():
+		_text(f, Vector2(0, by), "EMPFANGSKOMITEE AKTIV – NUR RÜCKSPRUNG MÖGLICH", _f_disp, 20, Color(UITheme.RED, 0.6 + 0.3 * sin(_t * 4.0)), HORIZONTAL_ALIGNMENT_CENTER, vp.x - PANEL_W)
+		by += 30.0
+	if GameState.damage != "" and not is_foreign_view():
+		# Systemschaden: Reparatur nur an einer Station
+		var dl := "SCHADEN: %s – REPARATUR NUR AN EINER STATION" % GameState.damage_name()
+		_text(f, Vector2(0, by), dl, _f_disp, 18, Color(UITheme.RED, 0.8), HORIZONTAL_ALIGNMENT_CENTER, vp.x - PANEL_W)
 
 
 func _draw_station_icon(f: Control, s: StationData) -> void:
@@ -787,6 +823,9 @@ func _draw_panel(vp: Vector2) -> void:
 				y += 28
 				_text(f, Vector2(x, y), "(%d %% pro Sekunde)" % int(Config.refuel_rate), _f_body, 20, UITheme.TEXT_DIM)
 				y += 28
+			if GameState.damage != "":
+				_text(f, Vector2(x, y), "Repariert beim Andocken: %s" % GameState.damage_name().capitalize(), _f_body, 21, UITheme.AMBER)
+				y += 28
 			if _is_current(GameState.Loc.STATION, s.id):
 				cost_line = "AKTUELLE POSITION"
 		GameState.Loc.SQUADRON:
@@ -883,11 +922,39 @@ func _draw_panel(vp: Vector2) -> void:
 			if attacked > 0:
 				_text(f, Vector2(x, y), "%d Planet(en) werden angegriffen!" % attacked, _f_bold, 22, UITheme.RED if fmod(_t, 0.6) < 0.4 else Color(1, 0.7, 0.4))
 				y += 30
-			_text(f, Vector2(x, y), "Energie und Bomben gibt es nur an den Stationen.", _f_body, 19, UITheme.TEXT_DIM)
+			_text(f, Vector2(x, y), "Bomben und Reparatur nur an Stationen,", _f_body, 19, UITheme.TEXT_DIM)
+			y += 24
+			_text(f, Vector2(x, y), "Energie auch am Stern.", _f_body, 19, UITheme.TEXT_DIM)
 			y += 26
 			if GameState.reception_active:
 				_text(f, Vector2(x, y), "Einziger möglicher Sprung (Empfangskomitee)", _f_body, 19, UITheme.AMBER)
 				y += 26
+		GameState.Loc.STAR:
+			var sname := GameState.star_name(sel_id)
+			var warm := Color(1.0, 0.62, 0.45) if sel_id == 1 else Color(1.0, 0.86, 0.55)
+			_text(f, Vector2(x, y), "STERN " + sname.to_upper(), _f_title, 30, warm)
+			y += 32
+			_text(f, Vector2(x, y), "SCHNELLTANKEN · nur Energie", _f_bold, 22, Color(warm, 0.9))
+			y += 46
+			var full_s := (Config.energy_max - GameState.energy) / maxf(Config.star_refuel_rate, 0.1)
+			_text(f, Vector2(x, y), "Energie voll in", _f_body, 22, UITheme.TEXT_DIM)
+			_text(f, Vector2(x, y), "ca. %d s" % int(ceil(full_s)), _f_mono, 24, UITheme.GREEN, HORIZONTAL_ALIGNMENT_RIGHT, w)
+			y += 32
+			_text(f, Vector2(x, y), "Verglühen nach", _f_body, 22, UITheme.TEXT_DIM)
+			_text(f, Vector2(x, y), "ca. %d s" % int(Config.star_heat_time), _f_mono, 24, UITheme.RED, HORIZONTAL_ALIGNMENT_RIGHT, w)
+			y += 32
+			_text(f, Vector2(x, y), "Reparatur · Bomben", _f_body, 22, UITheme.TEXT_DIM)
+			_text(f, Vector2(x, y), "nein", _f_mono, 24, UITheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT, w)
+			y += 40
+			if _is_current(GameState.Loc.STAR, sel_id):
+				var hot2 := GameState.star_heat >= Config.star_heat_warning
+				_text(f, Vector2(x, y), "HITZE %d %% · noch %.1f s" % [int(round(GameState.star_heat * 100.0)), GameState.star_time_left()], _f_disp, 22, UITheme.RED if hot2 else UITheme.AMBER)
+				y += 30
+				cost_line = "AKTUELLE POSITION"
+			_text(f, Vector2(x, y), "Rechtzeitig wegspringen: die Hitze steigt", _f_body, 19, UITheme.TEXT_DIM)
+			y += 24
+			_text(f, Vector2(x, y), "auch, während die Karte offen ist.", _f_body, 19, UITheme.TEXT_DIM)
+			y += 26
 		GameState.Loc.ENEMY_PLANET:
 			var ep: PlanetData = GameState.enemy_planets[sel_id]
 			_text(f, Vector2(x, y), ep.name.to_upper(), _f_title, 34, Color(1.0, 0.62, 0.72))
@@ -988,16 +1055,23 @@ func _draw_enemy_summary(f: Control, x: float, y: float, w: float) -> float:
 	return y
 
 
+## Protokoll der letzten Meldungen (bei gestörter Kommunikation wie im Kampf: verstümmelt, verlorene fehlen).
 func _draw_events(vp: Vector2) -> void:
 	var f := _front
-	var n := mini(6, GameState.events.size())
+	var shown := []
+	for i in range(GameState.events.size() - 1, -1, -1):
+		var ev: Dictionary = GameState.events[i]
+		if GameState.event_shown(ev) != "":
+			shown.push_front(ev)
+			if shown.size() >= 6:
+				break
+	var n := shown.size()
 	var y := vp.y - 30.0 - n * 26.0
-	for i in n:
-		var ev: Dictionary = GameState.events[GameState.events.size() - n + i]
+	for ev in shown:
 		var age := GameState.sim_time - float(ev.t)
 		var a := clampf(1.0 - age / 90.0, 0.35, 1.0)
 		_text(f, Vector2(36, y), GameState.format_time(ev.t), _f_mono, 18, Color(UITheme.TEXT_DIM, a))
-		_text(f, Vector2(110, y), ev.text, _f_body, 21, Color(UITheme.sev_color(ev.sev).lightened(0.2), a))
+		_text(f, Vector2(110, y), GameState.event_shown(ev), _f_body, 21, Color(UITheme.sev_color(ev.sev).lightened(0.2), a))
 		y += 26.0
 
 

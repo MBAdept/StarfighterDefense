@@ -6,6 +6,8 @@ var hyper: ColorRect
 var black: ColorRect
 var _tween: Tween          ## Hyperraumsprung
 var _fade_tween: Tween     ## Abblenden
+var _phase := 0.0          ## Streifenfortschritt (auf der CPU integriert, fotosicher – siehe hyperspace.gdshader)
+var _intensity := 0.0
 
 
 func _ready() -> void:
@@ -27,7 +29,17 @@ func _ready() -> void:
 
 
 func _set_param(p: String, v: float) -> void:
+	if p == "intensity":
+		_intensity = v
 	(hyper.material as ShaderMaterial).set_shader_parameter(p, v)
+
+
+## Streifen laufen mit begrenztem Tempo weiter (vorher TIME × Tempo: nach langer Spielzeit sprangen sie
+## von Bild zu Bild – ein Stroboskop).
+func _process(delta: float) -> void:
+	if hyper.visible:
+		_phase += delta * (0.4 + 1.0 * _intensity)
+		(hyper.material as ShaderMaterial).set_shader_parameter("phase", _phase)
 
 
 ## Laufenden Hyperraumsprung sofort beenden (Effekt ausblenden, Tween stoppen).
@@ -56,7 +68,7 @@ func fade(mid: Callable, out_time := 0.4, in_time := 0.5) -> void:
 
 
 const TINT_NORMAL := Vector3(0.55, 0.8, 1.0)
-const TINT_ENEMY := Vector3(1.0, 0.24, 0.16)   ## [Vorgabe] roter Hyperraum beim Sprung zwischen den Systemen
+const TINT_ENEMY := Vector3(1.0, 0.5, 0.4)   ## [Vorgabe] rötlicher Hyperraum zwischen den Systemen (fotosicher: kein gesättigtes Rot)
 
 
 ## Hyperraumsprung: Streifen beschleunigen, Weißblitz (Szenenwechsel), Ankunft.
@@ -65,6 +77,7 @@ func hyperjump(mid: Callable, done: Callable = Callable(), long := false) -> voi
 	if _tween:
 		_tween.kill()
 	var d := Config.jump_duration * (Config.enemy_jump_duration_factor if long else 1.0)
+	_phase = 0.0
 	var vp := get_viewport().get_visible_rect().size
 	_set_param("aspect", vp.x / maxf(vp.y, 1.0))
 	_set_param("intensity", 0.0)
