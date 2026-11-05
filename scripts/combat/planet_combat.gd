@@ -370,8 +370,8 @@ func _place_player() -> void:
 		target = planet.city_pos[squadron.group_city]
 	var a := randf() * TAU
 	pos = target + Vector2(cos(a), sin(a)) * 330.0
-	if pos.length() > Config.planet_area_radius:
-		pos = pos.normalized() * Config.planet_area_radius * 0.9
+	if pos.length() > planet.area():
+		pos = pos.normalized() * planet.area() * 0.9
 	var d := target - pos
 	yaw = atan2(-d.x, -d.y)
 
@@ -392,7 +392,7 @@ func _update_controls(delta: float) -> void:
 	speed = lerpf(speed, target_speed, 1.0 - exp(-Config.planet_response * delta))
 	var fwd := Vector2(-sin(yaw), -cos(yaw))
 	pos += fwd * speed * delta
-	var lim := Config.planet_area_radius
+	var lim := planet.area()
 	if pos.length() > lim:
 		pos = pos.normalized() * lim
 		_boundary_warn -= delta

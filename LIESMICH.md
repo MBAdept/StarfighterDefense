@@ -15,9 +15,9 @@ Benötigt wird eine Grafikkarte mit Vulkan, DirectX 12 oder OpenGL 3.3. Godot f�
 ## Spielziel
 
 Verteidige das Helion-System. Feindliche Schwadrone kommen aus dem Feindsystem **Vorrhal** (Galaxie oben links auf der Karte). Sie fliegen langsam auf Planeten oder Raumstationen zu, landen und bombardieren Städte.
-**Gewonnen** hast du, sobald **alle Städte im Feindsystem** zerbombt sind. Das sind 36–44 Städte auf 5 Planeten und braucht mehrere Angriffe.
+**Gewonnen** hast du, sobald **alle Städte im Feindsystem** zerbombt sind. Je nach Schwierigkeitsstufe sind das 36–44 Städte auf 5 Planeten (Fortgeschritten: über 80) und braucht mehrere Angriffe.
 **Verloren** hast du, wenn deine Energie auf 0 fällt oder alle eigenen Städte zerstört sind.
-Am Ende steht immer eine **Auswertung**: bei Sieg, Game Over und vorzeitigem Abbruch. Dazu gibt es eine lokale Highscore-Liste.
+Am Ende steht immer eine **Auswertung**: bei Sieg, Game Over und vorzeitigem Abbruch. Dazu gibt es lokale Highscore-Listen, eine je Schwierigkeitsstufe.
 
 1. **Orbit-Start**: Wehre über dem Heimatplaneten Halcyon 9 (oder 12) Fighter in Dreierwellen ab. Danach ist die Karte freigeschaltet.
 2. **Systemkarte (Leertaste)**: Ziel wählen (Planet, Station, Schwadron) und springen. Ein Sprung kostet Energie, je weiter, desto mehr (2,5–12 %).
@@ -33,14 +33,14 @@ Am Ende steht immer eine **Auswertung**: bei Sieg, Game Over und vorzeitigem Abb
 - **Empfangskomitee**: Beim ersten Sprung hinein warten **12 Fighter in 4 Wellen**. Sie schießen doppelt so oft und mit Doppelschuss. Zerstörer und Flaggschiffe sind nicht dabei. Solange das Komitee kämpft, ist auf der Karte nur der Rücksprung möglich.
   - Es gibt **nur ein Empfangskomitee**: Abgeschossene Fighter kommen nicht wieder. Wer vorher zurückspringt, trifft beim nächsten Mal nur noch auf den Rest.
   - Sind alle 12 vernichtet, bleibt der Sprungpunkt dauerhaft frei. Mit `reception_once=false` kommt das Komitee wieder bei jedem Sprung.
-- **Feindkarte**: Stern Vorrhal und 5 Planeten. Die Heimatwelt Xhal liegt innen und hat 12 Städte. Die 4 äußeren Planeten (Kethra, Uzhul, Drauth, Myrrax) haben je 6–8 Städte. Unten rechts liegt der **Rücksprungpunkt** nach Helion, als Symbol dient unser Stern. Sprünge innerhalb des Feindsystems kosten wie gewohnt 2,5–12 % je nach Entfernung.
-- **Schwadron-Nachschub**: Von den äußeren Planeten starten sichtbar neue Schwadrone (Ring „START!“). Sie fliegen zum Sprungpunkt und springen ins Helion-System, sofern dort weniger als 4 unterwegs sind, sonst warten sie. Diese Schwadrone haben Zerstörer und eventuell ein Flaggschiff. Du kannst sie anwählen und **abfangen**.
-- **Produktion**: Jede zerstörte Stadt auf einem äußeren Planeten verlangsamt den Nachschub spürbar (+15 % Abstand je Stadt). Ohne Städte auf den äußeren Planeten kommen **keine neuen Schwadrone** mehr. Die Heimatwelt baut keine Schwadrone.
+- **Feindkarte**: Stern Vorrhal und 5 Planeten. Die Heimatwelt Xhal liegt innen und hat 12 Städte. Die 4 äußeren Planeten (Kethra, Uzhul, Drauth, Myrrax) haben je 6–8 Städte. Auf Fortgeschritten sind es 20 bzw. 15–17. Unten rechts liegt der **Rücksprungpunkt** nach Helion, als Symbol dient unser Stern. Sprünge innerhalb des Feindsystems kosten wie gewohnt 2,5–12 % je nach Entfernung.
+- **Schwadron-Nachschub**: Von den äußeren Planeten starten sichtbar neue Schwadrone (Ring „START!“). Sie fliegen zum Sprungpunkt und springen ins Helion-System, sofern dort weniger als 6 unterwegs sind (bis 0.12.0: 4), sonst warten sie. Diese Schwadrone haben Zerstörer und eventuell ein Flaggschiff. Du kannst sie anwählen und **abfangen**.
+- **Produktion**: Jede zerstörte Stadt auf einem äußeren Planeten verlangsamt den Nachschub spürbar. Gezählt wird der Anteil der zerstörten äußeren Städte: Bei 28 äußeren Städten sind das +15 % Abstand je Stadt. Bei mehr Städten wirkt jede einzelne schwächer, bei weniger stärker. Ohne Städte auf den äußeren Planeten kommen **keine neuen Schwadrone** mehr. Die Heimatwelt baut keine Schwadrone.
 - **Feindplaneten angreifen**: Die Städte werden von Fightern verteidigt. Außenplaneten haben 9–12, die Heimatwelt 18. Sie kommen in Dreierwellen dicht hintereinander und **regenerieren sich nicht**.
   - Die Verteidiger nehmen dein Schiff so heftig unter Beschuss, dass zum Bomben keine Zeit bleibt: 2,5-fache Feuerrate mit Doppelschuss, auf der Heimatwelt sogar 3-fach.
   - Also erst die Verteidiger mit dem Bordlaser abwehren, dann bombardieren.
   - Ist der Verteidiger-Bestand vernichtet, trifft trotzdem **gelegentlich Verstärkung** ein: 1–3 Fighter, etwa alle 14–26 s, solange der Planet noch Städte hat. Durchbomben ohne Unterbrechung geht also nicht.
-- **Bomben**: Du hast **10 Bomben**, das reicht für etwa einen äußeren Planeten pro Angriff. Auf Feindplaneten wechselst du mit **Q / Tab** (Gamepad X) zwischen Bordlaser und Bomben. Im Bombenmodus neigt sich der Blick leicht nach unten. Eine **Aufschlagmarke** am Boden zeigt, wo eine jetzt abgeworfene Bombe einschlägt. Die Bombe fällt ballistisch und fliegt umso weiter, je schneller du fliegst (ca. 55–140 m voraus).
+- **Bomben**: Du hast **10 Bomben**, das reicht für etwa einen äußeren Planeten pro Angriff (auf Fortgeschritten für gut die Hälfte). Auf Feindplaneten wechselst du mit **Q / Tab** (Gamepad X) zwischen Bordlaser und Bomben. Im Bombenmodus neigt sich der Blick leicht nach unten. Eine **Aufschlagmarke** am Boden zeigt, wo eine jetzt abgeworfene Bombe einschlägt. Die Bombe fällt ballistisch und fliegt umso weiter, je schneller du fliegst (ca. 55–140 m voraus).
   - Wird die Marke grün, liegt eine Stadt im Trefferkreis: FEUER.
   - **1 Treffer zerstört eine Stadt** und bringt **5000 Punkte**. Ein Fehlwurf ist verloren.
   - „BOMBE UNTERWEGS“ heißt, auf diese Stadt fällt schon eine Bombe.
@@ -52,6 +52,25 @@ Tipps:
 - **Flaggschiff**: Nur das rosa Quadrat ist verwundbar, und nur kurz vor dem eigenen Schuss, wenn es weiß-rosa leuchtet. Die Ionen-Kugel braucht Flugzeit, also leicht vorher feuern!
 - **Ausweichen**: Wer im Moment des Einschlags kräftig lenkt (auf Planeten: schnell fliegt), halbiert die Trefferchance des Gegners. Laser können anfliegende Geschosse auch abschießen.
 - **Taktik**: Kleinere Schwadrone fliegen langsamer. Ein angeschlagenes Schwadron zu verlangsamen kann klüger sein, als es ganz auszulöschen.
+
+## Schwierigkeitsstufen (ab 0.13.0)
+
+Die Stufe wählst du unter **Optionen → Schwierigkeit**. Das Titelbild zeigt die gewählte Stufe an. Die Stufen unterscheiden sich vor allem in der Menge an Arbeit bis zum Sieg und damit in der Spieldauer. Jede Stufe hat eine **eigene Highscore-Liste**. Mit ◀ ▶ bzw. Links/Rechts wechselst du zwischen den Listen.
+
+| Stufe | Schwadrone zu Beginn | Städte je Feindplanet | Besonderheit |
+|---|---|---|---|
+| Kinderspiel | 2 | 6–8, Heimatwelt 12 | weniger Gegnerschaden (75 %), Schwadrone langsamer und seltener (bis 0.12.0 „Leicht“) |
+| Anfänger | 2 | 6–8, Heimatwelt 12 | wie bis 0.12.0 „Normal“ |
+| Normal | 3 | 6–8, Heimatwelt 12 | – |
+| Fortgeschritten | 4 | 15–17, Heimatwelt 20 | Städte weiter über die Oberfläche verteilt: Radius des Einsatzgebiets 45 % größer |
+
+- In **allen Stufen** sind jetzt bis zu **6 Schwadrone** gleichzeitig im Helion-System unterwegs (bis 0.12.0: 4).
+- Die Nachschub-Bremse richtet sich nach dem **Anteil** zerstörter Städte auf den äußeren Feindplaneten. Bei 28 äußeren Städten wirkt sie wie bisher (+15 % Abstand je Stadt), bei mehr Städten wirkt jede einzelne entsprechend schwächer, bei weniger stärker.
+- Die Stufe gilt für die ganze Partie und lässt sich nur im Hauptmenü ändern. Im Spiel ist sie in den Optionen gesperrt, denn die Punkte zählen für die Highscore-Liste der Stufe, mit der die Partie begann.
+- Die bisherige Stufe „Schwer“ (130 % Gegnerschaden) entfällt. Wer sie gespeichert hatte, spielt jetzt „Normal“.
+- **Hart** und **Experte** mit einem zweiten Feindsystem folgen in 0.14.0.
+- Die bisherige Highscore-Liste (eine für alle) steht jetzt unter **Anfänger**, das war der bisherige Standard „Normal“.
+- Eine `balance.cfg` geht den Stufen vor, wenn sie einen Wert **abweichend vom Standard** setzt. Setzt sie z. B. `initial_squadrons=5`, gilt das in jeder Stufe. Eine unveränderte Kopie der `balance_template.cfg` schaltet die Stufen dagegen nicht ab.
 
 ## Sterne und Systemschäden (ab 0.12.0)
 
@@ -163,6 +182,9 @@ Testszenarien über die Kommandozeile (`StarfighterDefense -- --test=…`):
 | `enemy_map` | Feindkarte mit startenden Schwadronen |
 | `evaluation` | Auswertungsbildschirm, `--end=victory\|abort\|gameover` |
 | `star` | Am Stern, `--system=1` für Vorrhal, `--energy=N` Startenergie |
+| `highscores` | Highscore-Tabellen je Schwierigkeitsstufe |
+
+Schwierigkeitsstufe für Tests: `--difficulty=0…3` (Kinderspiel, Anfänger, Normal, Fortgeschritten). Sie wird nicht gespeichert und funktioniert auch mit `--autoplay`.
 
 Zusätzliche Testhilfen (0.12.0, in allen Testszenarien `--test=…`; ein reines `--autoplay` ohne Szenario beginnt ein neues Spiel und setzt sie zurück):
 - `--energy=N`: Startenergie, z. B. unter 30 %, damit Treffer Systemschäden auslösen können.
@@ -210,7 +232,16 @@ Eine Vorlage mit allen Werten schreibt das Spiel beim Start nach `balance_templa
 
 Dort liegen auch `highscores.json` und `settings.cfg`.
 
-Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automatische Waffenwahl, 9/12 Fighter im Orbit, die [VERMUTET]-Regel „Schwadron mit nur einem Zerstörer bleibt zeitweise stehen“, Schwierigkeit, Scanner-Ausrichtung, Randpfeile, Retro-Filter und die Cockpit-Ansicht.
+Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automatische Waffenwahl, 9/12 Fighter im Orbit, die [VERMUTET]-Regel „Schwadron mit nur einem Zerstörer bleibt zeitweise stehen“, Scanner-Ausrichtung, Randpfeile, Retro-Filter und die Cockpit-Ansicht. Die Schwierigkeit lässt sich nur im Hauptmenü ändern.
+
+## Änderungen in Version 0.13.0 – Schwierigkeitsstufen
+
+- **Neue Stufen**: Kinderspiel, Anfänger, Normal und Fortgeschritten. Details siehe „Schwierigkeitsstufen“.
+- **Bis zu 6 Schwadrone** gleichzeitig im Helion-System (bis 0.12.0: 4).
+- **Eigene Highscore-Liste je Stufe**, umschaltbar mit ◀ ▶. Die Auswertung zeigt die Liste der gespielten Stufe.
+- Die Nachschub-Bremse richtet sich nach dem Anteil zerstörter Städte.
+- Fortgeschritten: 15–17 Städte je Feindplanet (Heimatwelt 20) auf einem größeren Einsatzgebiet. Scanner und Spielfeldgrenze passen sich an.
+- Das Titelbild zeigt die gewählte Stufe. Die Auswertung und `auswertungen.csv` nennen die Stufe beim Namen.
 
 ## Änderungen in Version 0.12.0 – Sterne, Systemschäden, mehr Fighter
 
@@ -314,6 +345,17 @@ Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automati
 ## Stand / offene Punkte
 
 - **Militär-Rang und Siegbonus** folgen nach deinen Tests. Vorgesehen ist `bonus_victory` in `config.gd`, derzeit 0.
+- **Messung 0.13.0** je Schwierigkeitsstufe mit dem menschenähnlichen Testfahrer. „Vorsichtig“ = Verteidigung zuerst (`--raid_safe`), „Angriff“ = Sturmangriff (`--raid`). Spielzeit in Minuten:
+
+  | Stufe | vorsichtig | verlorene Städte | Angriff | verlorene Städte |
+  |---|---|---|---|---|
+  | Kinderspiel | 15–17 (3 von 3 gewonnen) | 0 | 11–13 | 2–4 |
+  | Anfänger | 15–22 (3 von 3) | 0 | 12–14 | 4 |
+  | Normal | 25–27 (3 von 3) | 0 | 14–16 | 0–3 |
+  | Fortgeschritten | 52–63 (2 von 3, eine Partie nach 100 Minuten noch offen) | 0 | 32–36 | 25–30 |
+
+  - Auf Fortgeschritten sind fast ständig bis zu 6 Schwadrone im Helion-System. Der vorsichtige Testfahrer greift nur an, wenn keine Landung droht. Deshalb kommt er lange nicht zum Angriff, und die Partie dauert sehr lange. Bei der offenen Partie waren nach 100 Minuten 70 von 83 Feindstädten zerstört und die Produktion gestoppt.
+  - Wer angreift und dafür einzelne Städte opfert, kommt auf etwa 35 Minuten.
 - **Messung 0.12.0** mit dem menschenähnlichen Testfahrer, alle Neuerungen aktiv (doppelte Fighter, Tempo 0,8, Sterne, Systemschäden):
   - „Verteidigung zuerst“ (`--raid_safe`): **12 von 12 Partien gewonnen**, alle ohne verlorene eigene Stadt. Dauer 14–24 Minuten, im Schnitt 21. Je Partie gab es 0–3 Systemschäden (im Schnitt 1,5), alle wurden an Stationen repariert. Dazu kamen 3–6 Sternbesuche.
   - Sturmangriff (`--raid`): 8 von 8 Partien gewonnen, in 13–20 Minuten. Dabei gingen 0–27 eigene Städte verloren.

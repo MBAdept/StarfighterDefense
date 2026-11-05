@@ -88,7 +88,7 @@ func _ready() -> void:
 	_right.custom_minimum_size = Vector2(700, 0)
 	cols.add_child(_right)
 
-	if Highscores.qualifies(GameState.score):
+	if Highscores.qualifies(GameState.score, GameState.difficulty_key):
 		var nl := UITheme.label("NEUER HIGHSCORE! Dein Name:", 28, UITheme.GREEN, "display")
 		nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_right.add_child(nl)
@@ -163,7 +163,7 @@ func _build_evaluation() -> Control:
 		["Bomben", bomb_line],
 		["Sprünge (davon zwischen den Systemen)", "%d (%d)" % [st.get("jumps", 0), st.get("enemy_jumps", 0)]],
 		["Sternbesuche · Systemschäden (repariert)", "%d · %d (%d)" % [st.get("star_visits", 0), st.get("damages", 0), st.get("repairs", 0)]],
-		["Erreichte Stufe · Schwierigkeit", "%d · %s" % [GameState.level + 1, Settings.DIFFICULTY_NAMES[clampi(Settings.difficulty, 0, 2)]]],
+		["Erreichte Stufe · Schwierigkeit", "%d · %s" % [GameState.level + 1, GameState.difficulty_name]],
 	]
 	for e in extras:
 		extra.add_child(UITheme.label(e[0], 21, UITheme.TEXT_DIM))
@@ -208,7 +208,7 @@ func _submit() -> void:
 	cf.load("user://settings.cfg")
 	cf.set_value("player", "name", n)
 	cf.save("user://settings.cfg")
-	_rank = Highscores.add(n, GameState.score, GameState.level, GameState.play_time, _kind == "victory")
+	_rank = Highscores.add(n, GameState.score, GameState.level, GameState.play_time, _kind == "victory", GameState.difficulty_key)
 	Audio.ui("ui_select")
 	for node in _entry_nodes:
 		if is_instance_valid(node):
@@ -219,8 +219,8 @@ func _submit() -> void:
 
 
 func _show_table() -> void:
-	_right.add_child(UITheme.title_label("HIGHSCORES", 34, UITheme.AMBER))
-	var hl := HighscoreView.build_table(_rank, true)
+	_right.add_child(UITheme.title_label("HIGHSCORES · %s" % GameState.difficulty_name.to_upper(), 34, UITheme.AMBER))
+	var hl := HighscoreView.build_table(_rank, true, GameState.difficulty_key)
 	hl.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_right.add_child(hl)
 	var hb := HBoxContainer.new()

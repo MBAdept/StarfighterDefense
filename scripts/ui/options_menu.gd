@@ -55,7 +55,18 @@ func _ready() -> void:
 	_section(grid, "SPIEL")
 	_choice(grid, "Orbit-Start: Fighter", "orbit_fighters", ["9 Fighter", "12 Fighter"], [9, 12])
 	_check(grid, "Schwadron mit nur 1 Zerstörer stoppt zeitweise (vermutet)", "single_destroyer_stops")
-	_choice(grid, "Schwierigkeit", "difficulty", Settings.DIFFICULTY_NAMES, [0, 1, 2])
+	var dvals := []
+	for i in Config.DIFFICULTY_LEVELS.size():
+		dvals.append(i)
+	var dopt := _choice(grid, "Schwierigkeit", "difficulty", Settings.difficulty_names(), dvals)
+	(dopt as OptionButton).tooltip_text = _difficulty_help()
+	(dopt as OptionButton).item_selected.connect(func(_i): (dopt as OptionButton).tooltip_text = _difficulty_help())
+	if GameState.in_game:
+		# die Stufe gilt für die ganze Partie (eigene Highscore-Liste) – nur im Hauptmenü änderbar
+		(dopt as OptionButton).disabled = true
+		(dopt as OptionButton).focus_mode = Control.FOCUS_NONE
+		_row_label(grid, "")
+		grid.add_child(UITheme.label("Schwierigkeit nur im Hauptmenü änderbar", 18, UITheme.TEXT_DIM))
 
 	var back := UITheme.button("ZURÜCK", _close)
 	back.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -125,6 +136,12 @@ func _choice(grid: GridContainer, text: String, key: String, labels: Array, valu
 	)
 	grid.add_child(o)
 	return o
+
+
+## Beschreibung der gewählten Stufe (Tooltip; Struktur der Stufe gilt ab der nächsten Partie).
+func _difficulty_help() -> String:
+	var lvl: Dictionary = Config.difficulty_level(Settings.difficulty)
+	return "%s: %s" % [lvl.name, lvl.desc]
 
 
 func _close() -> void:

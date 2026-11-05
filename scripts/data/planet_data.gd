@@ -18,6 +18,7 @@ var landed_squadron := -1       ## Schwadron-ID, die gerade auf dem Planeten ist
 # Feindsystem
 var is_enemy := false           ## Planet des Feindsystems (Städte werden vom Spieler zerbombt)
 var defenders := 0              ## verbleibende Verteidiger-Fighter (keine Regeneration)
+var area_radius := 0.0          ## Einsatzgebiet (m); 0 = Config.planet_area_radius (Feindplaneten: × enemy_planet_area_factor)
 var defenders_initial := 0
 
 
@@ -27,6 +28,10 @@ func alive_cities() -> int:
 		if c:
 			n += 1
 	return n
+
+
+func area() -> float:
+	return area_radius if area_radius > 0.0 else Config.planet_area_radius
 
 
 func map_pos() -> Vector2:

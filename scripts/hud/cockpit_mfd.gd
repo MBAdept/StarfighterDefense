@@ -173,13 +173,14 @@ func _draw_scanner() -> void:
 		var a := sweep - i * 0.04
 		draw_line(c, c + Vector2.from_angle(a) * r, Color(UITheme.CYAN, 0.14 * (1.0 - i / 12.0)), 2.0, true)
 	var heading_up := Config.scanner_heading_up
-	var range_m := Config.planet_area_radius * (1.55 if heading_up else 1.12)
+	var area_m: float = pc.planet.area()
+	var range_m := area_m * (1.55 if heading_up else 1.12)
 	var sc := r / range_m
 	var ppos := pc.player_xz()
 	var yaw := pc.yaw
 	var center_world := ppos if heading_up else Vector2.ZERO
 	var area_c := _scan(Vector2.ZERO, center_world, yaw, heading_up, sc)
-	draw_arc(c + area_c, Config.planet_area_radius * sc, 0, TAU, 64, Color(UITheme.AMBER, 0.3), 1.5, true)
+	draw_arc(c + area_c, area_m * sc, 0, TAU, 64, Color(UITheme.AMBER, 0.3), 1.5, true)
 	for i in pc.planet.cities.size():
 		var p := _scan(pc.planet.city_pos[i], center_world, yaw, heading_up, sc)
 		if p.length() > r - 4.0:

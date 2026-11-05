@@ -452,6 +452,10 @@ func _run_test_scenario() -> void:
 		GameState.time_scale = float(_test["simspeed"])
 	if _test.has("classic"):
 		Settings.cockpit_view = false   # Testhilfe: klassisches HUD (wird nicht gespeichert)
+	if _test.has("difficulty"):
+		# Testhilfe: Schwierigkeitsstufe 0–3 (Kinderspiel, Anfänger, Normal, Fortgeschritten), wird nicht gespeichert
+		Settings.difficulty = int(_test["difficulty"])
+		Settings.apply()
 	if _test.has("holdsteer"):
 		# Testhilfe: Lenkung dauerhaft halten (left/right/up/down), z. B. für Bilder des nachfedernden Cockpits
 		Input.action_press("steer_" + str(_test["holdsteer"]))
@@ -466,6 +470,13 @@ func _run_test_scenario() -> void:
 	match what:
 		"title":
 			goto_title()
+		"highscores":
+			# Testhilfe: Highscore-Tabellen (je Schwierigkeitsstufe, ◀ ▶ zum Umschalten)
+			goto_title()
+			await get_tree().process_frame
+			await get_tree().process_frame
+			if scene is TitleScreen:
+				(scene as TitleScreen)._open(HighscoreView.new())
 		"orbit":
 			_set_scene(SpaceCombat.create_orbit(), State.ORBIT)
 		"space", "squadron":

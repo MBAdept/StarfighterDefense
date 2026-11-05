@@ -97,6 +97,8 @@ var star_heat := 0.0            ## [Vorgabe] Hitze am Stern 0..1 (1 = Schiff ver
 var _star_leaving := false      ## Absprung vom Stern läuft: keine Hitze mehr
 var _star_arriving := false     ## Hyperraum läuft beim Anflug noch aus: Hitze und Tanken erst danach (volle 10 s)
 var damage := ""               ## [Vorgabe] aktiver Systemschaden: "", "bombs", "screen", "comms" – höchstens einer
+var difficulty_key := "anfaenger"   ## Schwierigkeitsstufe dieser Partie (beim Start festgehalten: Highscore-Liste, Auswertung)
+var difficulty_name := "Anfänger"
 var victory := false
 var end_kind := ""              ## "gameover" | "victory" | "abort" – für die Auswertung
 var in_game := false            ## eine Partie läuft (Titel/Auswertung: false)
@@ -123,6 +125,7 @@ func _ready() -> void:
 #  Neues Spiel
 # =============================================================================================
 func new_game() -> void:
+	Config.apply_difficulty(Settings.difficulty)   # Stufe beim Start festlegen (gilt für die ganze Partie)
 	rng.randomize()
 	running = false
 	sim_time = 0.0
@@ -149,6 +152,8 @@ func new_game() -> void:
 	_star_leaving = false
 	_star_arriving = false
 	damage = ""
+	difficulty_key = Settings.difficulty_key()
+	difficulty_name = Settings.difficulty_name()
 	victory = false
 	end_kind = ""
 	in_game = true
@@ -207,8 +212,8 @@ func _create_planets() -> void:
 func _layout_cities(p: PlanetData, n: int, name_pool: Array = CITY_NAMES) -> void:
 	var lr := RandomNumberGenerator.new()
 	lr.seed = p.seed
-	var area := Config.planet_area_radius * 0.74
-	var min_dist := 92.0
+	var area := p.area() * 0.74
+	var min_dist := 92.0 * p.area() / Config.planet_area_radius   # größeres Gebiet: Städte auch weiter auseinander
 	var names := name_pool.duplicate()
 	for i in names.size():
 		var j := lr.randi_range(0, names.size() - 1)
@@ -252,6 +257,7 @@ func _create_enemy_planets() -> void:
 		var t := (p.orbit_radius - r_in) / maxf(r_out - r_in, 1.0)
 		p.angular_speed = -TAU / lerpf(Config.orbit_period_inner, Config.orbit_period_outer, t)   # Gegenlauf zu Helion
 		p.seed = rng.randi()
+		p.area_radius = Config.planet_area_radius * maxf(Config.enemy_planet_area_factor, 0.5)
 		var n := Config.enemy_home_city_count if p.is_home else rng.randi_range(Config.enemy_city_count_min, Config.enemy_city_count_max)
 		_layout_cities(p, n, ENEMY_CITY_NAMES)
 		p.defenders = Config.enemy_home_defenders if p.is_home else rng.randi_range(Config.enemy_defenders_min, Config.enemy_defenders_max)
@@ -354,10 +360,12 @@ func current_spawn_interval() -> float:
 	return base / pow(Config.difficulty_scale, 0.7)
 
 
-## Abstand zweier Schwadron-Starts im Feindsystem: Grundtakt × (1 + Verlangsamung je zerstörter Stadt der äußeren Planeten).
+## Abstand zweier Schwadron-Starts im Feindsystem: Grundtakt × (1 + Verlangsamung × zerstörte äußere Städte), die Zahl der
+## zerstörten Städte auf enemy_production_ref_cities bezogen – bei 28 äußeren Städten wie bis 0.12.0 (+15 % je Stadt).
 func current_production_interval() -> float:
 	var oc := outer_enemy_cities()
-	return current_spawn_interval() * (1.0 + Config.enemy_production_slowdown * float(oc.y - oc.x))
+	var destroyed := float(oc.y - oc.x) * float(Config.enemy_production_ref_cities) / maxf(float(oc.y), 1.0)
+	return current_spawn_interval() * (1.0 + Config.enemy_production_slowdown * destroyed)
 
 
 ## Städte der äußeren Feindplaneten: x = intakt, y = gesamt.
@@ -966,7 +974,7 @@ func _log_evaluation() -> void:
 		"fighter": stats.get("fighters", 0), "zerstoerer": stats.get("destroyers", 0),
 		"flaggschiffe": stats.get("flagships", 0), "feindstaedte": stats.get("enemy_cities", 0),
 		"eigene_staedte_verloren": stats.get("cities_lost", 0), "spielzeit_s": int(play_time),
-		"stufe": level + 1, "schwierigkeit": str(Config.difficulty_scale).replace(".", ","), "schwadrone": stats.get("squadrons", 0),
+		"stufe": level + 1, "schwierigkeit": difficulty_key, "schwadrone": stats.get("squadrons", 0),
 		"abgefangen_im_feindsystem": stats.get("enemy_squadrons_intercepted", 0),
 		"bomben_abgeworfen": stats.get("bombs_dropped", 0), "bomben_treffer": stats.get("bombs_hit", 0),
 		"spruenge": stats.get("jumps", 0), "spruenge_feindsystem": stats.get("enemy_jumps", 0),

@@ -31,7 +31,31 @@ var max_fps := 240
 ## [FREI] Cockpit-Ansicht: Nachfedern des Cockpits bei Drehungen (1 = Standard, 0 = starr) – die Ziel-
 ## symbolik bleibt immer deckungsgleich mit der Welt. Ein-/Ausschalten der Ansicht: Optionen.
 var cockpit_lag := 1.0
-var difficulty_scale := 1.0             ## [FREI] Schwierigkeit (Optionen: 0.75 / 1.0 / 1.3): Gegnerschaden ×s, Schwadron-Tempo ×√s, Abstand neuer Schwadrone ÷s^0.7
+var difficulty_scale := 1.0             ## [FREI] von der Schwierigkeitsstufe gesetzt: Gegnerschaden ×s, Schwadron-Tempo ×√s, Abstand neuer Schwadrone ÷s^0.7
+
+## [Vorgabe 0.13.0] Schwierigkeitsstufen (Optionen). Die Stufe setzt beim Start jeder Partie die Werte unter "values"
+## und gilt für die ganze Partie (eine Änderung mitten im Spiel wirkt ab der nächsten). Ausnahme: Schlüssel, die eine
+## balance.cfg auf einen anderen Wert als den Standard setzt – die gehen vor. Jede Stufe hat eine eigene
+## Highscore-Liste ("key").
+## Hart und Experte (zweites Feindsystem) folgen in 0.14.0.
+const DIFFICULTY_LEVELS := [
+	{"key": "kinderspiel", "name": "Kinderspiel",
+		"desc": "Weniger Schaden, langsamere und seltenere Schwadrone (bis 0.12.0 „Leicht“)",
+		"values": {"difficulty_scale": 0.75, "initial_squadrons": 2, "enemy_city_count_min": 6, "enemy_city_count_max": 8,
+			"enemy_home_city_count": 12, "enemy_planet_area_factor": 1.0}},
+	{"key": "anfaenger", "name": "Anfänger",
+		"desc": "2 Schwadrone zu Beginn, 6–8 Städte je Feindplanet (bis 0.12.0 „Normal“)",
+		"values": {"difficulty_scale": 1.0, "initial_squadrons": 2, "enemy_city_count_min": 6, "enemy_city_count_max": 8,
+			"enemy_home_city_count": 12, "enemy_planet_area_factor": 1.0}},
+	{"key": "normal", "name": "Normal",
+		"desc": "Wie Anfänger, aber 3 Schwadrone zu Beginn",
+		"values": {"difficulty_scale": 1.0, "initial_squadrons": 3, "enemy_city_count_min": 6, "enemy_city_count_max": 8,
+			"enemy_home_city_count": 12, "enemy_planet_area_factor": 1.0}},
+	{"key": "fortgeschritten", "name": "Fortgeschritten",
+		"desc": "4 Schwadrone zu Beginn, 15–17 Städte je Feindplanet (Heimatwelt 20), weiter verteilt",
+		"values": {"difficulty_scale": 1.0, "initial_squadrons": 4, "enemy_city_count_min": 15, "enemy_city_count_max": 17,
+			"enemy_home_city_count": 20, "enemy_planet_area_factor": 1.45}},
+]
 
 # ---------------------------------------------------------------------------------------------
 #  Energie
@@ -195,7 +219,7 @@ var flagship_weakpoint_radius := 5.0    ## [FREI] Trefferradius des rosa Quadrat
 # ---------------------------------------------------------------------------------------------
 #  Schwadrone (Übersichtskarte)
 # ---------------------------------------------------------------------------------------------
-var max_squadrons := 4                  ## [ORIGINAL] bis zu 4 gleichzeitig
+var max_squadrons := 6                  ## [Vorgabe 0.13.0] bis zu 6 gleichzeitig im Helion-System (bis 0.12.0: 4 [ORIGINAL])
 ## [Vorgabe 0.12.0] Fighter je Schwadron × Faktor (längere Kämpfe). Orbit-Start, Empfangskomitee und
 ## Planetenverteidiger bleiben unverändert. Das Tempo der Schwadrone rechnet mit der Größe ohne Faktor.
 var squadron_fighter_factor := 2.0
@@ -269,6 +293,7 @@ var enemy_jump_duration_factor := 3.0   ## [FREI, Vorgabe] dieser Sprung dauert 
 var enemy_city_count_min := 6           ## [FREI, Vorgabe] die 4 äußeren Feindplaneten haben 6–8 Städte …
 var enemy_city_count_max := 8           ## [FREI, Vorgabe]
 var enemy_home_city_count := 12         ## [FREI, Vorgabe] … die feindliche Heimatwelt 12
+var enemy_planet_area_factor := 1.0     ## [Vorgabe 0.13.0] Einsatzgebiet der Feindplaneten × Faktor (Fortgeschritten: Städte weiter verteilt)
 var enemy_city_points := 5000           ## [FREI, Vorgabe] Punkte je zerbombter Feindstadt
 var victory_all_enemy_cities := true    ## [FREI, Vorgabe] Sieg erst, wenn ALLE Städte im Feindsystem zerstört sind (false = nur die Heimatwelt)
 ## Empfangskomitee am Sprungpunkt des Feindsystems (nur einmal, siehe reception_once): nur Fighter (keine Zerstörer/Flaggschiffe)
@@ -303,7 +328,9 @@ var enemy_reinforce_max := 3                 ## [FREI, Vorgabe]
 ## Schwadron-Produktion: Schwadrone starten sichtbar von äußeren Planeten mit intakten Städten und fliegen
 ## zum Sprungpunkt ins Helion-System. Jede zerstörte Stadt auf einem äußeren Planeten verlangsamt die Produktion,
 ## ohne Städte auf den äußeren Planeten kommt kein neues Schwadron mehr (Heimatwelt produziert nicht).
-var enemy_production_slowdown := 0.15   ## [FREI, Vorgabe "spürbar langsamer"] Abstand neuer Schwadrone +15 % je zerstörter Stadt
+var enemy_production_slowdown := 0.15   ## [FREI, Vorgabe "spürbar langsamer"] Abstand neuer Schwadrone +15 % je zerstörter Stadt …
+var enemy_production_ref_cities := 28   ## [Vorgabe 0.13.0] … bezogen auf 28 äußere Städte: bei mehr Städten (Fortgeschritten) wirkt
+										## jede einzelne entsprechend schwächer – die Bremse verläuft nach dem Anteil zerstörter Städte
 var enemy_system_max_squadrons := 3     ## [FREI] höchstens so viele Schwadrone gleichzeitig im Feindsystem unterwegs
 var enemy_transit_speed_factor := 2.5   ## [FREI] im eigenen System fliegen Schwadrone schneller (Transit zum Sprungpunkt)
 var enemy_first_launch := 25.0          ## [FREI] erster Start im Feindsystem nach Beginn der Kampagne (s)
@@ -341,6 +368,7 @@ var ticker_alert_cooldown := 6.0        ## [FREI] Mindestabstand der Hinweistön
 #  Hilfsfunktionen
 # =============================================================================================
 var _defaults := {}
+var _overridden := {}   ## Schlüssel, die eine balance.cfg ausdrücklich setzt (gehen den Schwierigkeitsstufen vor)
 
 
 func _ready() -> void:
@@ -401,7 +429,23 @@ func _load_overrides() -> void:
 					push_warning("[Config] %s: Wert '%s' hat den falschen Typ (%s statt %s) und wurde ignoriert (%s)" % [key, str(v), type_string(typeof(v)), type_string(typeof(cur)), path])
 					continue
 				set(key, v)
+				# nur ein vom Standard abweichender Wert geht den Schwierigkeitsstufen vor – eine unveränderte Kopie
+				# der balance_template.cfg (alle Schlüssel mit Standardwerten) schaltet die Stufen also nicht ab
+				if v != _defaults[key]:
+					_overridden[key] = true
 				print("[Config] Überschrieben: %s = %s (%s)" % [key, str(v), path])
+
+
+## Schwierigkeitsstufe übernehmen (Settings.apply): setzt die Werte der Stufe, außer balance.cfg-Schlüsseln.
+func apply_difficulty(idx: int) -> void:
+	var lvl: Dictionary = difficulty_level(idx)
+	for key in lvl.values:
+		if not _overridden.has(key):
+			set(key, _copy(lvl.values[key]))
+
+
+func difficulty_level(idx: int) -> Dictionary:
+	return DIFFICULTY_LEVELS[clampi(idx, 0, DIFFICULTY_LEVELS.size() - 1)]
 
 
 func _write_template() -> void:

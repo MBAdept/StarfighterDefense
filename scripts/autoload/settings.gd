@@ -5,8 +5,6 @@ extends Node
 signal changed
 
 const PATH := "user://settings.cfg"
-const DIFFICULTY_SCALE := [0.75, 1.0, 1.3]
-const DIFFICULTY_NAMES := ["Leicht", "Normal", "Schwer"]
 const QUALITY_NAMES := ["Hoch", "Mittel", "Niedrig"]
 const SAVED_KEYS := ["master_volume", "music_volume", "sfx_volume", "fullscreen", "vsync", "retro_filter",
 	"cockpit_view", "screen_shake", "invert_y", "auto_weapon", "offscreen_indicators", "scanner_heading_up",
@@ -85,9 +83,29 @@ func apply() -> void:
 	Config.scanner_heading_up = scanner_heading_up
 	Config.orbit_fighter_count = orbit_fighters
 	Config.single_destroyer_stops = single_destroyer_stops
-	Config.difficulty_scale = DIFFICULTY_SCALE[clampi(difficulty, 0, 2)]
+	difficulty = clampi(difficulty, 0, Config.DIFFICULTY_LEVELS.size() - 1)
+	# die Stufe gilt für die ganze Partie (eigene Highscore-Liste): mitten im Spiel erst ab der nächsten Partie
+	if not GameState.in_game:
+		Config.apply_difficulty(difficulty)
 	Config.screen_shake = screen_shake
 	changed.emit()
+
+
+## Schwierigkeitsstufen [Vorgabe 0.13.0] – Index wie bis 0.12.0 (0 Leicht → Kinderspiel, 1 Normal → Anfänger,
+## 2 Schwer → Normal), gespeicherte Einstellungen passen also weiter.
+func difficulty_key() -> String:
+	return Config.difficulty_level(difficulty).key
+
+
+func difficulty_name() -> String:
+	return Config.difficulty_level(difficulty).name
+
+
+static func difficulty_names() -> Array:
+	var out := []
+	for l in Config.DIFFICULTY_LEVELS:
+		out.append(l.name)
+	return out
 
 
 func shadows_enabled() -> bool:

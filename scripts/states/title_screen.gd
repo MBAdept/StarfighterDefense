@@ -5,6 +5,7 @@ extends Node3D
 var camera: Camera3D
 var ui: CanvasLayer
 var menu: VBoxContainer
+var _diff_label: Label
 var _sub: Control = null
 var _t := 0.0
 var _planet: Node3D
@@ -187,6 +188,12 @@ func _build_ui() -> void:
 	menu.add_child(UITheme.button("BEENDEN", func(): get_tree().quit()))
 	for b in menu.get_children():
 		(b as Button).alignment = HORIZONTAL_ALIGNMENT_LEFT
+	# gewählte Schwierigkeitsstufe (Optionen) unter dem Menü – jede Stufe hat eine eigene Highscore-Liste
+	_diff_label = UITheme.label("", 22, Color(UITheme.TEXT_DIM, 0.95))
+	_diff_label.position = Vector2(122, 470 + 5 * 74 + 6)
+	root.add_child(_diff_label)
+	_update_difficulty_label()
+	Settings.changed.connect(_update_difficulty_label)   # Methode: wird beim Freigeben automatisch getrennt
 	var foot := UITheme.label("Remake-Hommage · Version %s · Grafik, Klang und Musik vollständig prozedural erzeugt · F11 Vollbild" % ProjectSettings.get_setting("application/config/version"), 18, Color(UITheme.TEXT_DIM, 0.7))
 	root.add_child(foot)
 	foot.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
@@ -195,6 +202,11 @@ func _build_ui() -> void:
 	foot.offset_bottom = -24
 	await get_tree().process_frame
 	menu.get_child(0).grab_focus()
+
+
+func _update_difficulty_label() -> void:
+	if is_instance_valid(_diff_label):
+		_diff_label.text = "Schwierigkeit: %s  ·  ändern unter Optionen" % Settings.difficulty_name()
 
 
 func _open(c: Control) -> void:
