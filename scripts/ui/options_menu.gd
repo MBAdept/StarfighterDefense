@@ -28,6 +28,7 @@ func _ready() -> void:
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(1000, 700)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true   # [0.14.3] Steuerkreuz/Pfeile: die Liste rollt zum gewählten Eintrag mit
 	vb.add_child(scroll)
 	var grid := GridContainer.new()
 	grid.columns = 2
@@ -75,6 +76,13 @@ func _ready() -> void:
 		(dopt as OptionButton).focus_mode = Control.FOCUS_NONE
 		_row_label(grid, "")
 		grid.add_child(UITheme.label("Schwierigkeit nur im Hauptmenü änderbar", 18, UITheme.TEXT_DIM))
+	# [0.14.3] Mit Steuerkreuz/Pfeilen rollt die Liste nur bis zum gewählten Eintrag. Beim letzten wählbaren Eintrag
+	# ganz nach unten rollen, damit auch die Zeilen darunter (Beschreibung der Schwierigkeit, Hinweis) sichtbar sind.
+	for i in range(grid.get_child_count() - 1, -1, -1):
+		var c := grid.get_child(i) as Control
+		if c and c.focus_mode != Control.FOCUS_NONE:
+			c.focus_entered.connect(_scroll_to_end.bind(scroll))
+			break
 
 	var back := UITheme.button("ZURÜCK", _close)
 	back.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -82,6 +90,12 @@ func _ready() -> void:
 	await get_tree().process_frame
 	if _first:
 		_first.grab_focus()
+
+
+func _scroll_to_end(scroll: ScrollContainer) -> void:
+	await get_tree().process_frame   # nach dem Mitrollen von follow_focus
+	if is_instance_valid(scroll):
+		scroll.scroll_vertical = int(scroll.get_v_scroll_bar().max_value)
 
 
 func _section(grid: GridContainer, text: String) -> void:

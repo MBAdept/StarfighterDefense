@@ -38,6 +38,7 @@ func _ready() -> void:
 		["Karte: Ziel wählen", "Pfeile / Maus / E / Bild↑↓", "Stick / LB / RB"],
 		["Karte: Springen", "Enter / Strg / Klick", "A"],
 		["Pause", "Esc / P", "Start"],
+		["Menüs: wählen · bestätigen · zurück", "Pfeile · Enter · Esc", "Steuerkreuz/Stick · A · B"],
 		["Vollbild", "F11", ""],
 		["Testfunktionen", "F1 (Hilfe), F2–F12", ""],
 	]

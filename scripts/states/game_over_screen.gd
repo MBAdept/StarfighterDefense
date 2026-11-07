@@ -99,12 +99,18 @@ func _ready() -> void:
 		_name_edit.custom_minimum_size = Vector2(420, 60)
 		_name_edit.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		_name_edit.text_submitted.connect(func(_s): _submit())
+		_name_edit.gui_input.connect(_on_name_gui_input)
+		_name_edit.focus_entered.connect(_on_name_focus)
 		_name_edit.text_changed.connect(func(_s): Audio.ui("ui_type"))
 		_right.add_child(_name_edit)
 		var ok := UITheme.button("EINTRAGEN", _submit)
 		ok.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		_right.add_child(ok)
-		_entry_nodes = [nl, _name_edit, ok]
+		# [0.14.3] Gamepad: A trägt den (vorbelegten) Namen ein; Steam Deck hat eine Bildschirmtastatur
+		var pad_hint := UITheme.label("Enter oder Gamepad A: eintragen\nSteam Deck: STEAM + X öffnet die Tastatur", 20, UITheme.TEXT_DIM)
+		pad_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_right.add_child(pad_hint)
+		_entry_nodes = [nl, _name_edit, ok, pad_hint]
 		await get_tree().process_frame
 		if is_instance_valid(_name_edit):
 			_name_edit.grab_focus()
@@ -201,6 +207,27 @@ func _last_name() -> String:
 	if cf.load("user://settings.cfg") == OK:
 		return str(cf.get_value("player", "name", "PILOT"))
 	return "PILOT"
+
+
+## [0.14.3] Das Eingabefeld trägt nur bei Tasten-Enter ein. Gamepad A (ui_accept) soll den (vorbelegten)
+## Namen ebenso eintragen – sonst hing man mit dem Pad in der Namenseingabe fest.
+func _on_name_gui_input(event: InputEvent) -> void:
+	if event is InputEventKey or _name_edit == null:
+		return
+	if event.is_action_pressed("ui_accept"):
+		_name_edit.accept_event()
+		_submit()
+
+
+## [0.14.3] Godot schaltet ein Eingabefeld, das den Fokus per Steuerkreuz/Pfeilen bekommt, nicht in den
+## Bearbeitungsmodus – getippte Zeichen (auch von der Steam-Deck-Bildschirmtastatur) gingen dann verloren,
+## und Enter startete erst die Bearbeitung.
+func _on_name_focus() -> void:
+	if _name_edit == null:
+		return
+	if not _name_edit.is_editing():
+		_name_edit.edit()
+	_name_edit.caret_column = _name_edit.text.length()
 
 
 func _submit() -> void:

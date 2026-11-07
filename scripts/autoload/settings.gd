@@ -157,6 +157,28 @@ func _setup_input() -> void:
 	var mb := InputEventMouseButton.new()
 	mb.button_index = MOUSE_BUTTON_LEFT
 	InputMap.action_add_event("fire", mb)
+	_setup_ui_pad()
+
+
+## [0.14.3] Menüs mit Gamepad/Steam Deck: Godot belegt Bestätigen (ui_accept) und Zurück (ui_cancel) ab Werk
+## nur mit Tasten – mit dem Pad ließ sich zwar der Fokus bewegen, aber nichts auslösen. A bestätigt,
+## B geht zurück (die Namenseingabe der Auswertung wertet A selbst aus, siehe GameOverScreen).
+## Steuerkreuz und linker Stick bewegen den Fokus schon ab Werk.
+func _setup_ui_pad() -> void:
+	_add_pad_button("ui_accept", JOY_BUTTON_A)
+	_add_pad_button("ui_cancel", JOY_BUTTON_B)
+
+
+func _add_pad_button(action_name: String, button: JoyButton) -> void:
+	if not InputMap.has_action(action_name):
+		return
+	for e in InputMap.action_get_events(action_name):
+		if e is InputEventJoypadButton and (e as InputEventJoypadButton).button_index == button:
+			return
+	var j := InputEventJoypadButton.new()
+	j.button_index = button
+	j.device = -1
+	InputMap.action_add_event(action_name, j)
 
 
 func _action(action_name: String, keys: Array, buttons: Array, axes: Array) -> void:

@@ -12,6 +12,8 @@ Alle Grafiken, Sounds und Musikstücke sind selbst erzeugt. Es werden keine Orig
 
 Benötigt wird eine Grafikkarte mit Vulkan, DirectX 12 oder OpenGL 3.3. Godot fällt automatisch auf OpenGL zurück, wenn Vulkan fehlt.
 
+**Steam Deck** (auf echtem Gerät noch nicht getestet): Die Linux-Version lässt sich im Desktop-Modus als Nicht-Steam-Spiel hinzufügen. Bedient wird sie wie mit einem Gamepad. Für die Namenseingabe in der Highscore-Liste öffnet STEAM + X die Bildschirmtastatur, A trägt den vorbelegten Namen direkt ein.
+
 ## Spielziel
 
 Verteidige das Helion-System. Feindliche Schwadrone kommen aus dem Feindsystem **Vorrhal** (Galaxie oben links auf der Karte). Sie fliegen langsam auf Planeten oder Raumstationen zu, landen und bombardieren Städte.
@@ -164,11 +166,12 @@ Seit 0.11.0 sitzt du in einem echten 3D-Cockpit. Die Anzeigen leuchten wie bei e
 | Steuern (All: links/rechts/rauf/runter) | Pfeiltasten / WASD | Linker Stick / Steuerkreuz |
 | Steuern (Planet: drehen, vor, zurück) | Pfeiltasten / WASD | Linker Stick / Steuerkreuz |
 | Feuer | Strg, Enter, F, J, linke Maustaste | A, rechter Trigger |
-| Systemkarte | Leertaste, M | Y, Back |
+| Systemkarte (schließen auch mit Esc bzw. B) | Leertaste, M | Y, Back |
 | Waffe wechseln (bei manueller Waffenwahl; auf Feindplaneten immer: Bordlaser / Bomben) | Q, Tab | X, RB |
 | Karte: Ziel wählen / springen | Pfeile, Maus / Enter, Klick | Stick / A |
 | Karte: anderes System ansehen (nur Beobachtung) | Q, Tab | X |
 | Pause | Esc, P | Start |
+| Menüs: wählen / bestätigen / zurück | Pfeile / Enter / Esc | Steuerkreuz oder Stick / A / B |
 | Vollbild | F11 | – |
 
 ## Testfunktionen (für die Abnahme der Etappen)
@@ -258,6 +261,15 @@ Eine Vorlage mit allen Werten schreibt das Spiel beim Start nach `balance_templa
 Dort liegen auch `highscores.json` und `settings.cfg`.
 
 Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automatische Waffenwahl, 9/12 Fighter im Orbit, die [VERMUTET]-Regel „Schwadron mit nur einem Zerstörer bleibt zeitweise stehen“, Scanner-Ausrichtung, Randpfeile, Retro-Filter und die Cockpit-Ansicht. Die Schwierigkeit lässt sich nur im Hauptmenü ändern.
+
+## Änderungen in Version 0.14.3 – Menüs mit Gamepad und Steam Deck
+
+- **Behoben: Mit dem Gamepad ließ sich in den Menüs nichts auswählen.** Steuerkreuz und Stick bewegten zwar die Markierung, aber keine Taste löste aus. Jetzt bestätigt **A** in allen Menüs (Titel, Optionen, Auswahllisten, Steuerung, Highscores, Pause, Auswertung). **B** geht zurück wie Esc: Es schließt Optionen, Steuerung, Highscores, Auswahllisten, die Pause und die Karte.
+- **Pause**: Solange Optionen oder Steuerung aus der Pause offen sind, sind die Pause-Knöpfe ausgeblendet. Bisher führten Steuerkreuz, Stick oder Pfeiltasten auf die verdeckten Knöpfe, und zweimal Bestätigen auf „SPIEL BEENDEN“ brach die Partie unbemerkt ab. Danach steht der Fokus wieder auf dem Knopf, von dem man kam.
+- **Optionen**: Die Liste rollt beim Navigieren mit. Beim letzten Eintrag rollt sie ganz nach unten, damit Beschreibung und Hinweis zur Schwierigkeit sichtbar sind. Der gewählte Regler leuchtet heller und hat einen größeren Knopf. Eingeschaltete Schalter sehen nicht mehr aus wie das gewählte Element, und der markierte Eintrag in Auswahllisten passt zum Design.
+- **Highscore-Name**: A trägt den vorbelegten Namen ein (bisher nur Enter). Das Namensfeld zeigt einen hellen Rahmen, wenn es gewählt ist, und nimmt Eingaben auch an, wenn man mit dem Steuerkreuz zurück ins Feld geht (vorher gingen getippte Zeichen dann verloren). Ein Hinweis darunter nennt Enter/A und für das Steam Deck STEAM + X (Bildschirmtastatur).
+- Die Steuerungsübersicht nennt die Menütasten.
+- Geprüft mit simulierten Pad-Eingaben durch alle Menüs und die Karte sowie in der Deck-Auflösung 1280×800.
 
 ## Änderungen in Version 0.14.2 – Stationen besetzbar statt zerstörbar
 

@@ -85,6 +85,10 @@ static func build() -> Theme:
 		t.set_color("font_focus_color", type, Color(1, 1, 1))
 		t.set_color("font_pressed_color", type, Color(1, 1, 1))
 		t.set_color("font_disabled_color", type, TEXT_DIM)
+	# [0.14.3] Eingeschaltete Schalter („AN“) sahen aus wie das gewählte Element – mit Gamepad/Tastatur war nicht
+	# zu erkennen, wo der Fokus steht. Den Zustand zeigen Text und Schaltersymbol, der Rahmen nur Fokus/Maus.
+	t.set_stylebox("pressed", "CheckButton", btn_normal)
+	t.set_stylebox("hover_pressed", "CheckButton", btn_hover)
 
 	t.set_stylebox("panel", "Panel", panel_style())
 	t.set_stylebox("panel", "PanelContainer", panel_style())
@@ -101,7 +105,13 @@ static func build() -> Theme:
 	fill.bg_color = CYAN
 	t.set_stylebox("slider", "HSlider", line)
 	t.set_stylebox("grabber_area", "HSlider", fill)
-	t.set_stylebox("grabber_area_highlight", "HSlider", fill)
+	# [0.14.3] Regler mit Fokus (Gamepad/Tastatur) oder Maus darüber: hellere, leuchtende Füllung und
+	# größerer Knopf (bisher sahen beide Zustände gleich aus – mit dem Pad war nicht zu sehen, was gewählt ist)
+	var fill_hl := fill.duplicate() as StyleBoxFlat
+	fill_hl.bg_color = Color(0.8, 1.0, 1.0)
+	fill_hl.shadow_color = Color(CYAN, 0.6)
+	fill_hl.shadow_size = 9
+	t.set_stylebox("grabber_area_highlight", "HSlider", fill_hl)
 	var grab := GradientTexture2D.new()
 	var g := Gradient.new()
 	g.set_color(0, Color(1, 1, 1))
@@ -113,13 +123,33 @@ static func build() -> Theme:
 	grab.fill_from = Vector2(0.5, 0.5)
 	grab.fill_to = Vector2(0.5, 0.0)
 	t.set_icon("grabber", "HSlider", grab)
-	t.set_icon("grabber_highlight", "HSlider", grab)
+	var grab_hl := GradientTexture2D.new()
+	var gh := Gradient.new()
+	gh.set_color(0, Color(1, 1, 1))
+	gh.set_color(1, Color(CYAN, 0.0))
+	gh.add_point(0.62, Color(0.75, 1.0, 1.0))
+	grab_hl.gradient = gh
+	grab_hl.width = 34
+	grab_hl.height = 34
+	grab_hl.fill = GradientTexture2D.FILL_RADIAL
+	grab_hl.fill_from = Vector2(0.5, 0.5)
+	grab_hl.fill_to = Vector2(0.5, 0.0)
+	t.set_icon("grabber_highlight", "HSlider", grab_hl)
 
-	var le := panel_style(CYAN, Color(0.02, 0.06, 0.1, 0.9), 4, 2)
+	var le := panel_style(CYAN_DIM, Color(0.02, 0.06, 0.1, 0.9), 4, 2)
 	le.content_margin_top = 8
 	le.content_margin_bottom = 8
 	t.set_stylebox("normal", "LineEdit", le)
-	t.set_stylebox("focus", "LineEdit", le)
+	# [0.14.3] Fokus sichtbar (vorher gleicher Stil wie ohne Fokus – nur der dünne Cursor verriet ihn): heller,
+	# kräftiger Ring außen um das Feld, wird über den normalen Stil gezeichnet
+	var le_focus := StyleBoxFlat.new()
+	le_focus.draw_center = false
+	le_focus.border_color = CYAN
+	le_focus.set_border_width_all(3)
+	le_focus.set_corner_radius_all(6)
+	le_focus.set_expand_margin_all(3)
+	le_focus.anti_aliasing = true
+	t.set_stylebox("focus", "LineEdit", le_focus)
 	t.set_font("font", "LineEdit", Assets.font("display"))
 	t.set_font_size("font_size", "LineEdit", 34)
 	t.set_color("font_color", "LineEdit", Color(1, 1, 1))
@@ -128,6 +158,12 @@ static func build() -> Theme:
 	var tip := panel_style(CYAN_DIM, Color(0.02, 0.05, 0.1, 0.95), 4, 1)
 	t.set_stylebox("panel", "TooltipPanel", tip)
 	t.set_stylebox("panel", "PopupMenu", tip)
+	# [0.14.3] markierter Eintrag in Auswahllisten (Steuerkreuz/Pfeile) im Stil der Knöpfe statt Godot-Grau
+	var pop_hl := panel_style(CYAN, Color(0.06, 0.18, 0.26, 0.95), 3, 1)
+	pop_hl.set_content_margin_all(0)
+	t.set_stylebox("hover", "PopupMenu", pop_hl)
+	t.set_color("font_color", "PopupMenu", TEXT)
+	t.set_color("font_hover_color", "PopupMenu", Color(1, 1, 1))
 	t.set_font("font", "PopupMenu", Assets.font("body"))
 	t.set_font_size("font_size", "PopupMenu", 24)
 	return t
