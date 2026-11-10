@@ -46,8 +46,40 @@ const SURFACE := {
 }
 
 
+## [0.14.4] Gelände je Planetentyp (PlanetTerrain, shaders/ground.gdshader):
+##   style  0 = Felder und Straßen, 1 = Bewässerungskreise und Straßen, 2 = nur Straßen, 3 = leuchtende Adern (Feind)
+##   relief Faktor für Hügel und Berge außerhalb des Gebiets, relief_inner = Bodenwellen im Gebiet (m),
+##   ridged = schroffe Grate, snow = Schnee auf den Höhen, rock = Felsfarbe der Hänge, accent = Farbe der Adern/Plätze
+const TERRAIN := {
+	"terran": {"style": 0, "relief": 1.0, "snow": 1.0, "rock": Color(0.34, 0.32, 0.29)},
+	"desert": {"style": 1, "relief": 0.75, "relief_inner": 3.5, "rock": Color(0.58, 0.4, 0.24)},
+	"ice": {"style": 2, "relief": 1.15, "snow": 1.0, "ridged": true, "rock": Color(0.5, 0.58, 0.7)},
+	"jungle": {"style": 0, "relief": 0.9, "rock": Color(0.2, 0.25, 0.15)},
+	"volcanic": {"style": 2, "relief": 1.3, "ridged": true, "rock": Color(0.13, 0.09, 0.08)},
+	"ocean": {"style": 2, "relief": 0.6, "relief_inner": 2.0, "rock": Color(0.4, 0.42, 0.36)},
+	"toxic": {"style": 2, "relief": 0.9, "rock": Color(0.3, 0.33, 0.13)},
+	"barren": {"style": 2, "relief": 1.0, "ridged": true, "rock": Color(0.3, 0.29, 0.28)},
+	"alien_home": {"style": 3, "relief": 1.0, "rock": Color(0.12, 0.05, 0.14)},
+	"alien_crimson": {"style": 3, "relief": 1.2, "ridged": true, "rock": Color(0.3, 0.1, 0.07)},
+	"alien_spore": {"style": 3, "relief": 0.8, "rock": Color(0.22, 0.24, 0.07)},
+	"alien_ash": {"style": 3, "relief": 1.1, "ridged": true, "rock": Color(0.12, 0.11, 0.11)},
+	"alien_crystal": {"style": 3, "relief": 1.2, "ridged": true, "rock": Color(0.18, 0.12, 0.3)},
+	"alien_void": {"style": 3, "relief": 0.9, "rock": Color(0.06, 0.06, 0.15)},
+	"alien_glacier": {"style": 3, "relief": 1.1, "snow": 1.0, "ridged": true, "rock": Color(0.36, 0.4, 0.56)},
+	"alien_magma": {"style": 3, "relief": 1.25, "ridged": true, "rock": Color(0.1, 0.08, 0.1)},
+	"alien_bloom": {"style": 3, "relief": 0.9, "rock": Color(0.05, 0.13, 0.17)},
+}
+
+
 static func surface(type: String) -> Dictionary:
 	return SURFACE.get(type, SURFACE["terran"])
+
+
+static func terrain(type: String) -> Dictionary:
+	var t: Dictionary = TERRAIN.get(type, TERRAIN["terran"]).duplicate()
+	if not t.has("accent"):
+		t["accent"] = surface(type).grid
+	return t
 
 
 static func palette(type: String) -> Array:

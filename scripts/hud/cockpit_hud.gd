@@ -748,7 +748,7 @@ func _draw_target_marker() -> void:
 	var dist := e.distance_to_player()
 	var px := combat.camera.unproject_position(ap + combat.camera.global_transform.basis.x * e.hit_radius)
 	var rad := clampf(px.distance_to(p.pos), 14.0, 220.0)
-	var col := e.hud_color
+	var col := intel_color(e)   # [0.14.4] ab Normal ohne Zerstörerfarbe
 	var lk := combat.locked
 	var s := rad + 8.0 + (4.0 * sin(_t * 10.0) if lk else 0.0)
 	var pos: Vector2 = p.pos
@@ -758,7 +758,7 @@ func _draw_target_marker() -> void:
 		_gpoly(PackedVector2Array([corner - Vector2(d.x, 0) * 13.0, corner, corner - Vector2(0, d.y) * 13.0]), Color(col, 0.95), 1.7)
 	var label := "%s  %d m" % [e.display_name, int(dist)]
 	_gtext(pos + Vector2(s * 0.75 + 10.0, -s * 0.75 + 16.0), label, _f_body, 20, Color(col.lightened(0.3), 0.95))
-	if e is Destroyer:
+	if e is Destroyer and Config.combat_intel:   # [0.14.4] Rest-Treffer nur bis Anfänger
 		var d: Destroyer = e
 		var hits: int = d.data.hits_left
 		var total := Config.destroyer_hits_needed(d.data.color)
@@ -773,7 +773,10 @@ func _draw_target_marker() -> void:
 	elif e is Flagship:
 		var f: Flagship = e
 		var wp := _project(f.weak_point_pos())
-		if wp.front:
+		if wp.front and not Config.combat_intel:
+			# [Vorgabe 0.14.4] ab Normal nur die Markierung des Quadrats – kein Ladebalken, kein Fensterhinweis
+			_gbox(Rect2(wp.pos - Vector2(34, 34), Vector2(68, 68)), Color(UITheme.PINK, 0.85), 1.6)
+		elif wp.front:
 			var ch := f.charge_level()
 			var vul := f.is_vulnerable()
 			var bc := UITheme.PINK.lerp(Color(1, 1, 1), 0.5 if vul else 0.0)
@@ -798,7 +801,7 @@ func _draw_offscreen(vp: Vector2) -> void:
 	if Config.offscreen_indicators:
 		for e in combat.enemies:
 			if is_instance_valid(e) and e.alive:
-				items.append({"w": e.global_position, "col": e.hud_color, "big": e.kind != Enemy.Kind.FIGHTER, "inc": false})
+				items.append({"w": e.global_position, "col": intel_color(e), "big": e.kind != Enemy.Kind.FIGHTER, "inc": false})
 	for s in combat.shots.incoming_heavy():
 		items.append({"w": s.pos, "col": UITheme.RED, "big": true, "inc": true})
 	for it in items:

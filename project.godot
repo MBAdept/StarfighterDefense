@@ -7,7 +7,7 @@ config_version=5
 
 config/name="Starfighter Defense"
 config/description="Verteidige dein Sonnensystem gegen feindliche Schwadrone."
-config/version="0.14.3"
+config/version="0.14.4"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="StarfighterDefense"
 run/main_scene="res://scenes/main.tscn"

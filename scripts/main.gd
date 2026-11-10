@@ -27,6 +27,8 @@ var debug_label: Label
 var _jumping := false
 var _jump_target_pos := Vector2.ZERO
 var _test := {}
+## [0.14.4] zuletzt mit dem Gamepad gespielt (Steam Deck): Die Namenseingabe beginnt dann auf der Bildschirmtastatur
+var last_input_pad := false
 
 
 func _ready() -> void:
@@ -338,6 +340,14 @@ func _enter_location(kind: int, id: int) -> void:
 # =============================================================================================
 #  Eingabe: Karte, Pause, Testfunktionen
 # =============================================================================================
+## [0.14.4] merkt sich, ob zuletzt Gamepad oder Tastatur/Maus benutzt wurde (Stick-Rauschen unter 0,5 zählt nicht)
+func _input(event: InputEvent) -> void:
+	if event is InputEventJoypadButton or (event is InputEventJoypadMotion and absf((event as InputEventJoypadMotion).axis_value) > 0.5):
+		last_input_pad = true
+	elif event is InputEventKey or event is InputEventMouseButton:
+		last_input_pad = false
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("toggle_fullscreen"):
 		Settings.toggle_fullscreen()

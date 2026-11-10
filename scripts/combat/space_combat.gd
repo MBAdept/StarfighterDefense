@@ -176,6 +176,8 @@ func _ready() -> void:
 				var sub := "%d Fighter – sie schießen deutlich aggressiver" % orbit_total
 				if Config.reception_once and orbit_total < Config.reception_fighter_count:
 					sub = "Noch %d Fighter des Empfangskomitees – sie schießen deutlich aggressiver" % orbit_total
+				if not Config.combat_intel:   # [0.14.4] ab Normal ohne Anzahl (steht auf der Karte)
+					sub = "Die Fighter schießen deutlich aggressiver"
 				hud.show_message("EMPFANGSKOMITEE!", sub, 3.2, UITheme.RED)
 				Audio.alarm(-6.0)
 
@@ -597,6 +599,10 @@ func _spawn_wave() -> void:
 		if counted:
 			orbit_spawned += 1
 	Audio.sfx("wave_incoming", -2.0)
+	if not Config.combat_intel:
+		# [Vorgabe 0.14.4] ab Normal ohne Wellenzahl gesamt und ohne Anzahl der Fighter
+		hud.show_message("WELLE %d" % wave, "FIGHTER IM ANFLUG", 1.8, UITheme.FIGHTER_COLOR)
+		return
 	var title := "WELLE %d" % wave + (" / %d" % total_waves if total_waves > 0 else "")
 	hud.show_message(title, "%d FIGHTER IM ANFLUG" % n, 1.8, UITheme.FIGHTER_COLOR)
 
@@ -666,6 +672,8 @@ func _start_squadron_fight(intro: bool) -> void:
 
 
 func _composition_text(sq: SquadronData) -> String:
+	if not Config.combat_intel:
+		return "Feindkontakt"   # [Vorgabe 0.14.4] ab Normal: Zusammensetzung nur auf der Übersichtskarte
 	var parts := []
 	if sq.fighters > 0:
 		parts.append("%d Fighter" % sq.fighters)
@@ -727,7 +735,11 @@ func _spawn_flagship() -> void:
 	flagship.anchor_pitch = deg_to_rad(randf_range(2, 9))
 	flagship.dist = Config.flagship_distance
 	add_enemy(flagship, camera.global_position + dir_from_angles(flagship.anchor_yaw, flagship.anchor_pitch) * flagship.dist)
-	hud.show_message("FLAGGSCHIFF!", "Nur das rosa Quadrat – und nur kurz vor seinem Schuss", 3.0, UITheme.PINK)
+	if Config.combat_intel:
+		hud.show_message("FLAGGSCHIFF!", "Nur das rosa Quadrat – und nur kurz vor seinem Schuss", 3.0, UITheme.PINK)
+	else:
+		# [Vorgabe 0.14.4] ab Normal nur die Ankunft mit Richtung (wie beim Zerstörer), kein Hinweis zum Zeitpunkt
+		hud.show_message("FLAGGSCHIFF!", "<< LINKS" if side > 0.0 else "RECHTS >>", 2.6, UITheme.PINK)
 
 
 func _half_hfov() -> float:
@@ -752,7 +764,12 @@ func _on_enemy_removed(e: Enemy) -> void:
 		if phase == Phase.DONE:
 			Audio.play_music(music_track(), 3.0)
 	elif e.kind == Enemy.Kind.DESTROYER:
-		if squadron and not squadron.destroyers.is_empty():
+		if not Config.combat_intel:
+			# [Vorgabe 0.14.4] ab Normal: nicht verraten, ob noch ein Zerstörer folgt. War es der letzte, steht schon
+			# „SCHWADRON VERNICHTET“ (wird synchron vorher gemeldet) – das nicht überschreiben.
+			if squadron and squadron.state != SquadronData.State.DESTROYED:
+				hud.show_message("ZERSTÖRER VERNICHTET", "", 1.8, UITheme.GREEN)
+		elif squadron and not squadron.destroyers.is_empty():
 			hud.show_message("ZERSTÖRER VERNICHTET", "Nächster Zerstörer im Anflug …", 1.8, UITheme.GREEN)
 
 
@@ -770,7 +787,8 @@ func _on_squadron_destroyed(sq: SquadronData) -> void:
 	Audio.sfx("squadron_destroyed")
 	if _flagship_alive():
 		flagship.start_retreat_timer()
-		hud.show_message("SCHWADRON VERNICHTET", "Das Flaggschiff zieht sich gleich zurück – letzte Chance!", 3.5, UITheme.GREEN)
+		if Config.combat_intel:
+			hud.show_message("SCHWADRON VERNICHTET", "Das Flaggschiff zieht sich gleich zurück – letzte Chance!", 3.5, UITheme.GREEN)
 	else:
 		Audio.play_music(music_track(), 3.0)
 
@@ -785,10 +803,16 @@ func _start_station_defense() -> void:
 	if _station_was_occupied:
 		# [Vorgabe 0.14.2] besetzte Station: die Fighter halten sie, bis sie vernichtet sind
 		location_sub = "BESETZT!"
-		hud.show_message("STATION BESETZT!", ("%d Fighter hält %s – vernichten, um sie zu befreien" if squadron.fighters == 1 else "%d Fighter halten %s – vernichten, um sie zu befreien") % [squadron.fighters, station.name], 3.0, UITheme.RED)
+		if Config.combat_intel:
+			hud.show_message("STATION BESETZT!", ("%d Fighter hält %s – vernichten, um sie zu befreien" if squadron.fighters == 1 else "%d Fighter halten %s – vernichten, um sie zu befreien") % [squadron.fighters, station.name], 3.0, UITheme.RED)
+		else:
+			hud.show_message("STATION BESETZT!", "Fighter halten %s – vernichten, um sie zu befreien" % station.name, 3.0, UITheme.RED)
 	else:
 		location_sub = "WIRD ANGEGRIFFEN!"
-		hud.show_message("STATION WIRD ANGEGRIFFEN!", "%d Fighter – nur Fighter greifen Stationen an" % squadron.fighters, 2.8, UITheme.RED)
+		if Config.combat_intel:
+			hud.show_message("STATION WIRD ANGEGRIFFEN!", "%d Fighter – nur Fighter greifen Stationen an" % squadron.fighters, 2.8, UITheme.RED)
+		else:
+			hud.show_message("STATION WIRD ANGEGRIFFEN!", "Nur Fighter greifen Stationen an", 2.8, UITheme.RED)
 	if not frozen:
 		Audio.play_music("combat_space")   # bei offener Karte übernimmt close_map() die Musik
 	controls_enabled = true

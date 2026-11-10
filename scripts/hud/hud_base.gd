@@ -147,6 +147,8 @@ func _lage_lines() -> Array:
 	for e in combat.enemies:
 		if is_instance_valid(e) and e.alive and e.kind == Enemy.Kind.FLAGSHIP:
 			fl = true
+	if not Config.combat_intel:
+		return _lage_lines_reduced(fl)
 	var lines := []
 	if combat is SpaceCombat:
 		var sc: SpaceCombat = combat
@@ -176,3 +178,41 @@ func _lage_lines() -> Array:
 	if lines.is_empty():
 		lines.append(["KONTAKTE", "KEINE", UITheme.GREEN])
 	return lines
+
+
+## [Vorgabe 0.14.4] ab Normal: Lage ohne Stärke des Gegners (keine Anzahl, keine Zerstörerfarben) – die steht nur
+## auf der Übersichtskarte. Eigene Werte (Städte, Bomben) bleiben.
+func _lage_lines_reduced(flagship_present: bool) -> Array:
+	var lines := []
+	var contact := flagship_present
+	if combat is SpaceCombat:
+		var sc: SpaceCombat = combat
+		if (sc.mode == SpaceCombat.Mode.ORBIT and not sc.orbit_done) or (sc.mode == SpaceCombat.Mode.RECEPTION and sc.phase == SpaceCombat.Phase.FIGHTERS):
+			contact = true
+		elif sc.squadron and sc.squadron.state != SquadronData.State.DESTROYED and not sc.is_docking():
+			contact = true
+	elif combat is PlanetCombat and (combat as PlanetCombat).enemy_mode:
+		var ep: PlanetCombat = combat
+		lines.append(["FEINDSTÄDTE", "%d / %d" % [ep.planet.alive_cities(), ep.planet.cities.size()], Color(1.0, 0.4, 0.62)])
+		var active := ep.planet.defenders > 0 or ep.reinforcements_alive() > 0
+		lines.append(["VERTEIDIGER", "AKTIV" if active else "AUS", UITheme.FIGHTER_COLOR if active else UITheme.GREEN])
+		lines.append(["BOMBEN", "%d / %d" % [GameState.bombs, Config.bombs_max], UITheme.AMBER if GameState.bombs > 0 else UITheme.RED])
+		return lines
+	elif combat is PlanetCombat:
+		var pc: PlanetCombat = combat
+		lines.append(["STÄDTE", "%d / %d" % [pc.planet.alive_cities(), pc.planet.cities.size()], UITheme.CYAN])
+		if pc.squadron and pc.squadron.state != SquadronData.State.DESTROYED:
+			contact = true
+	if contact:
+		lines.append(["KONTAKT", "FEIND", UITheme.RED])
+	if lines.is_empty():
+		lines.append(["KONTAKTE", "KEINE", UITheme.GREEN])
+	return lines
+
+
+## [Vorgabe 0.14.4] HUD-Farbe eines Gegners für Zielmarke, Randpfeile und Punkte-Popup: ab Normal ohne
+## Zerstörerfarbe (die Farbe sieht man am Schiff selbst) und ohne Rosa für das Flaggschiff – neutral bernstein.
+static func intel_color(e: Enemy) -> Color:
+	if Config.combat_intel or e.kind == Enemy.Kind.FIGHTER:
+		return e.hud_color
+	return UITheme.AMBER

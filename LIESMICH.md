@@ -12,7 +12,7 @@ Alle Grafiken, Sounds und Musikstücke sind selbst erzeugt. Es werden keine Orig
 
 Benötigt wird eine Grafikkarte mit Vulkan, DirectX 12 oder OpenGL 3.3. Godot fällt automatisch auf OpenGL zurück, wenn Vulkan fehlt.
 
-**Steam Deck** (auf echtem Gerät noch nicht getestet): Die Linux-Version lässt sich im Desktop-Modus als Nicht-Steam-Spiel hinzufügen. Bedient wird sie wie mit einem Gamepad. Für die Namenseingabe in der Highscore-Liste öffnet STEAM + X die Bildschirmtastatur, A trägt den vorbelegten Namen direkt ein.
+**Steam Deck**: Die Linux-Version lässt sich im Desktop-Modus als Nicht-Steam-Spiel hinzufügen. Bedient wird sie wie mit einem Gamepad. Für den Namen in der Highscore-Liste hat das Spiel eine eigene Bildschirmtastatur (ab 0.14.4): A tippt die gewählte Taste, B löscht, Start trägt ein; Antippen auf dem Touchscreen geht ebenfalls.
 
 ## Spielziel
 
@@ -52,7 +52,7 @@ Am Ende steht immer eine **Auswertung**: bei Sieg, Game Over und vorzeitigem Abb
 Tipps:
 - **Zerstörer**: blau = 2 Treffer, grün = 3, rot = 4. Jeder Treffer nimmt eine Schildschicht weg. Getroffen wird nur die sichtbare Schildblase.
   - Zerstörer schwanken stark hin und her (rote am stärksten). Nicht jeder Schuss sitzt, also dranbleiben. Die plötzlichen Ausweichmanöver vor Ionen-Kugeln gibt es seit 0.12.0 nicht mehr (`destroyer_dodge_chance`).
-- **Flaggschiff**: Nur das rosa Quadrat ist verwundbar, und nur kurz vor dem eigenen Schuss, wenn es weiß-rosa leuchtet. Die Ionen-Kugel braucht Flugzeit, also leicht vorher feuern!
+- **Flaggschiff**: Nur das rosa Quadrat ist verwundbar, und nur kurz vor dem eigenen Schuss, wenn es weiß-rosa leuchtet (3 Sekunden lang, ab 0.14.4). Die Ionen-Kugel braucht Flugzeit, also leicht vorher feuern! Ab der Stufe Normal hilft dabei kein HUD mehr, nur das Leuchten des Quadrats.
 - **Ausweichen**: Wer im Moment des Einschlags kräftig lenkt (auf Planeten: schnell fliegt), halbiert die Trefferchance des Gegners. Laser können anfliegende Geschosse auch abschießen.
 - **Taktik**: Kleinere Schwadrone fliegen langsamer. Ein angeschlagenes Schwadron zu verlangsamen kann klüger sein, als es ganz auszulöschen.
 
@@ -78,12 +78,13 @@ Die Stufe wählst du unter **Optionen → Schwierigkeit**. Das Titelbild zeigt d
 |---|---|---|---|
 | Kinderspiel | 2 | 6–8, Heimatwelt 12 | weniger Gegnerschaden (75 %), Schwadrone langsamer und seltener (bis 0.12.0 „Leicht“) |
 | Anfänger | 2 | 6–8, Heimatwelt 12 | wie bis 0.12.0 „Normal“ |
-| Normal | 3 | 6–8, Heimatwelt 12 | – |
-| Fortgeschritten | 4 | 15–17, Heimatwelt 20 | Städte weiter über die Oberfläche verteilt: Radius des Einsatzgebiets 45 % größer |
+| Normal | 3 | 6–8, Heimatwelt 12 | weniger Kampfinfos (ab 0.14.4, siehe unten) |
+| Fortgeschritten | 4 | 15–17, Heimatwelt 20 | Städte weiter über die Oberfläche verteilt: Radius des Einsatzgebiets 45 % größer; weniger Kampfinfos |
 | Hart (ab 0.14.0) | 4 | Vorrhal 15–17, Heimatwelt 20; Ixmora 8–10, Heimatwelt 12 | wie Fortgeschritten, Schwadrone in Helion 10 % schneller. Kann Vorrhal keine Schwadrone mehr bauen, greift Ixmora an |
 | Experte (ab 0.14.0) | 4 | wie Hart | wie Hart, Ixmora greift aber schon an, sobald in Helion erstmals 60 s lang höchstens ein Schwadron unterwegs ist |
 
 - In **allen Stufen** sind jetzt bis zu **6 Schwadrone** gleichzeitig im Helion-System unterwegs (bis 0.12.0: 4).
+- **Weniger Kampfinfos ab Normal** (ab 0.14.4, also auch Fortgeschritten, Hart und Experte): Im Kampf zeigt das HUD nicht mehr, wie viele Fighter, Zerstörer oder Flaggschiffe die feindliche Einheit hat. Das LAGE-Feld meldet nur „KONTAKT FEIND“, die Banner nennen keine Zahlen. Die Zielmarke und die Randpfeile zeigen keine Zerstörerfarbe mehr, die Farbe sieht man am Schiff selbst. Die Schildkästchen fallen weg, und die Schildblase wird nicht mehr mit jedem Treffer schwächer. Beim Flaggschiff gibt es weder Ladebalken noch „VERWUNDBAR!“ noch die Meldungen „QUADRAT LEUCHTET!“ bzw. „ZU FRÜH!“, nur das Leuchten des Quadrats selbst. Die Stärke eines Schwadrons zeigt weiterhin die **Übersichtskarte**. Schalter: `combat_intel`.
 - Die Nachschub-Bremse richtet sich nach dem **Anteil** zerstörter Städte auf den äußeren Feindplaneten. Bei 28 äußeren Städten wirkt sie wie bisher (+15 % Abstand je Stadt), bei mehr Städten wirkt jede einzelne entsprechend schwächer, bei weniger stärker.
 - Die Stufe gilt für die ganze Partie und lässt sich nur im Hauptmenü ändern. Im Spiel ist sie in den Optionen gesperrt, denn die Punkte zählen für die Highscore-Liste der Stufe, mit der die Partie begann.
 - Die bisherige Stufe „Schwer“ (130 % Gegnerschaden) entfällt. Wer sie gespeichert hatte, spielt jetzt „Normal“.
@@ -146,7 +147,7 @@ Seit 0.11.0 sitzt du in einem echten 3D-Cockpit. Die Anzeigen leuchten wie bei e
   - unten links die **Lage**, unten rechts Waffe und Modus
   - die großen Meldungen
 - **Helmanzeige (im ganzen Blickfeld, genau auf den Zielen)**:
-  - Zielklammern mit Entfernung und Schildkästchen
+  - Zielklammern mit Entfernung und Schildkästchen (Schildkästchen und Zerstörerfarbe nur bis Anfänger)
   - Flaggschiff-Quadrat, Bombenbahn und Aufschlagtext, Punkte
   - Pfeile zu Gegnern außerhalb der Sicht
   - Spalte links: Ort, Lage-Untertitel und Bedienhinweise
@@ -261,6 +262,14 @@ Eine Vorlage mit allen Werten schreibt das Spiel beim Start nach `balance_templa
 Dort liegen auch `highscores.json` und `settings.cfg`.
 
 Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automatische Waffenwahl, 9/12 Fighter im Orbit, die [VERMUTET]-Regel „Schwadron mit nur einem Zerstörer bleibt zeitweise stehen“, Scanner-Ausrichtung, Randpfeile, Retro-Filter und die Cockpit-Ansicht. Die Schwierigkeit lässt sich nur im Hauptmenü ändern.
+
+## Änderungen in Version 0.14.4 – Diverse Überarbeitungen
+
+- **Start am Sprungpunkt**: Auf allen Stufen beginnen die ersten Schwadrone jetzt nahe dem Sprungpunkt des Feindsystems (4–13 % ihres Wegs, `initial_squadron_progress`, `initial_squadron_progress_step`). Bisher starteten sie bei 25–85 % ihres Wegs. Auf den Stufen mit 3–4 Start-Schwadronen standen die letzten damit schon fast an einem Planeten. Die früheste Ankunft liegt jetzt bei etwa 3½–7 Minuten.
+- **Weniger Kampfinfos ab Normal**: Im Kampf zeigt das HUD keine Anzahl von Fightern, Zerstörern oder Flaggschiffen mehr, keine Zerstörerfarbe an Zielmarke und Randpfeilen, keine Rest-Treffer (Schildkästchen, schwächer werdende Schildblase) und keinen Hinweis auf den richtigen Moment beim Flaggschiff (Ladebalken, „VERWUNDBAR!“, „QUADRAT LEUCHTET!“, „ZU FRÜH!“, eigener Ton im Trefferfenster). Die Übersichtskarte zeigt die Stärke weiterhin. Kinderspiel und Anfänger bleiben wie bisher (`combat_intel`).
+- **Flaggschiff-Trefferfenster 50 % länger** auf allen Stufen: 3 statt 2 Sekunden (`flagship_vulnerable_time`). Das Quadrat lädt dafür 1 Sekunde kürzer, Schussrhythmus (27 s) und erster Schuss bleiben gleich.
+- **Planetenoberflächen mit Landschaft**: Statt einer flachen Ebene mit einem Bergring liegt jedes Einsatzgebiet in einem Talkessel. Außen steigen Hügel und Berge an, je nach Planet schroff, mit Schnee oder mit Lava. Im Gebiet gibt es sanfte Bodenwellen (bis gut 2 m) und auf Wasserwelten Seen in Senken. Um jede Stadt liegt ein ebener Platz, verbunden durch Straßen. Auf Halcyon und Thessa liegen Felder um die Städte, auf Aurelia Bewässerungskreise. Auf den Feindwelten verbinden leuchtende Adern die Städte, mit Wurzelmustern ringsum. Beides erlischt, wenn die Stadt fällt. Bomben schlagen auf dem Gelände auf, die Aufschlagmarke folgt ihm. Auf den Stadtplätzen ist der Boden exakt eben, Treffer auf Städte funktionieren also genau wie bisher. Flughöhe und Gegner bleiben unverändert. Städte stehen nicht mehr im Wasser.
+- **Namenseingabe mit Bildschirmtastatur**: Unter dem Namensfeld der Highscore-Liste liegt eine eigene Tastatur (A–Z, Ä Ö Ü, Ziffern, Bindestrich, Leerzeichen, LÖSCHEN, EINTRAGEN). Mit dem Gamepad tippt A die gewählte Taste, B löscht ein Zeichen (den vorbelegten Namen ganz), Start oder EINTRAGEN trägt ein (im Namensfeld selbst auch A). Touchscreen und Maus funktionieren ebenfalls. Wer zuletzt mit dem Gamepad gespielt hat, beginnt auf der Tastatur, sonst im Namensfeld. Der vorbelegte Name erscheint gedämpft bzw. markiert, das erste Zeichen ersetzt ihn. Bisher ließ sich der Name auf dem Steam Deck nicht ändern.
 
 ## Änderungen in Version 0.14.3 – Menüs mit Gamepad und Steam Deck
 
@@ -408,6 +417,7 @@ Einige Optionen lassen sich auch direkt im Spiel umschalten (Optionen): automati
 ## Stand / offene Punkte
 
 - **Militär-Rang und Siegbonus** folgen nach deinen Tests. Vorgesehen ist `bonus_victory` in `config.gd`, derzeit 0.
+- **Messung 0.14.4** (8 Partien mit dem Testfahrer, alle Stufen): Alle gewonnen. Kinderspiel nach 13, Anfänger nach 15, Normal nach 10 und 11 (vorsichtig 24), Fortgeschritten nach 26, Hart nach 49, Experte nach 56 Minuten. Die erste eigene Stadt fiel frühestens nach 4:44 Minuten (Experte), auf Normal nach 9:22 oder gar nicht. Bomben auf dem neuen Gelände: 98–100 % Treffer. Das Flaggschiff lädt 10 s, ist 3 s verwundbar und pausiert 14 s (Takt 27 s wie bisher).
 - **Messung 0.14.2** (Kontrolle nach der Umstellung auf besetzbare Stationen, 6 Partien): Alle gewonnen. Hart mit Angriff nach 40 und 46 Minuten (28 bzw. 56 von ~80 Städten verloren), Experte mit Angriff nach 53 (68 verloren), Experte ungeduldig nach 103 (43 verloren), Fortgeschritten mit Angriff nach 27, Anfänger nach 13 Minuten. In 2 Partien wurden insgesamt 3 Stationen besetzt. Der Testfahrer befreite sie jeweils nach 35 Sekunden bis 2½ Minuten. Zerstört wurde keine Station.
 - **Messung 0.14.1** (Hart und Experte nach der Entschärfung; Experte mit dem Auslöser „60 s, höchstens ein Schwadron“), sonst wie bei 0.14.0. Spielzeit bis zum Sieg in Minuten:
 

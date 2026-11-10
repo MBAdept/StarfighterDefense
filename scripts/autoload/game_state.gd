@@ -340,7 +340,7 @@ func start_campaign() -> void:
 	var lvls: Array = Config.initial_squadron_levels
 	for i in Config.initial_squadrons:
 		var lvl: int = 0 if lvls.is_empty() else clampi(int(lvls[mini(i, lvls.size() - 1)]), 0, Config.difficulty_max_level)
-		_spawn_squadron(lvl, 0.25 + 0.2 * i)
+		_spawn_squadron(lvl, Config.initial_squadron_progress + Config.initial_squadron_progress_step * i)
 	log_event("Feindliche Schwadrone im %s-System gesichtet!" % STAR_NAME, Sev.WARN)
 
 

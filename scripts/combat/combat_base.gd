@@ -579,7 +579,7 @@ func on_enemy_destroyed(e: Enemy) -> void:
 			hud.add_popup(e.global_position, "+%d" % Config.fighter_points, UITheme.FIGHTER_COLOR)
 		Enemy.Kind.DESTROYER:
 			var d := e as Destroyer
-			hud.add_popup(e.global_position, "+%d" % int(Config.by_color(Config.destroyer_points, d.data.color)), d.hud_color)
+			hud.add_popup(e.global_position, "+%d" % int(Config.by_color(Config.destroyer_points, d.data.color)), HudBase.intel_color(d))
 		Enemy.Kind.FLAGSHIP:
 			hud.add_popup(e.global_position, "+%d" % Config.flagship_points, UITheme.PINK)
 	_on_enemy_removed(e)
@@ -597,12 +597,15 @@ func on_destroyer_engages(_d: Destroyer) -> void:
 	pass
 
 
+## [Vorgabe 0.14.4] Hinweise zum Flaggschiff-Zeitpunkt nur bis Anfänger (ab Normal zeigt nur das Leuchten des
+## Quadrats [ORIGINAL] das Trefferfenster; Funken/Schildton bei zu frühem Treffer bleiben in der Welt)
 func on_flagship_vulnerable(_f: Flagship) -> void:
-	hud.show_message("QUADRAT LEUCHTET!", "Jetzt Ionen-Kanone auf das Quadrat", 1.4, UITheme.PINK, true)
+	if Config.combat_intel:
+		hud.show_message("QUADRAT LEUCHTET!", "Jetzt Ionen-Kanone auf das Quadrat", 1.4, UITheme.PINK, true)
 
 
 func on_flagship_immune(_f: Flagship, on_weak: bool) -> void:
-	if on_weak:
+	if on_weak and Config.combat_intel:
 		hud.show_message("ZU FRÜH!", "Nur verwundbar, wenn das Quadrat weiß-rosa leuchtet", 1.4, UITheme.AMBER, true)
 
 

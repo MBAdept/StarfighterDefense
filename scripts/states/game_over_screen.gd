@@ -14,6 +14,11 @@ var _entry_nodes: Array = []
 var _rank := -1
 var _kind := "gameover"
 var _leaving := false   ## ein Knopf wurde gedrückt – weitere Klicks während des Abblendens ignorieren
+## [0.14.4] Bildschirmtastatur für den Highscore-Namen (Gamepad, Steam Deck, Touch, Maus)
+const OSK_ROWS := ["ABCDEFGHIJ", "KLMNOPQRST", "UVWXYZÄÖÜ-", "0123456789"]
+var _osk_first: Button = null
+var _name_fresh := true   ## vorbelegter Name noch unverändert: das erste Zeichen ersetzt ihn, Löschen leert ihn
+static var _key_styles := {}
 
 
 func _ready() -> void:
@@ -101,20 +106,25 @@ func _ready() -> void:
 		_name_edit.text_submitted.connect(func(_s): _submit())
 		_name_edit.gui_input.connect(_on_name_gui_input)
 		_name_edit.focus_entered.connect(_on_name_focus)
-		_name_edit.text_changed.connect(func(_s): Audio.ui("ui_type"))
+		_name_edit.text_changed.connect(func(_s):
+			Audio.ui("ui_type")
+			_set_name_fresh(false))
 		_right.add_child(_name_edit)
-		var ok := UITheme.button("EINTRAGEN", _submit)
-		ok.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		_right.add_child(ok)
-		# [0.14.3] Gamepad: A trägt den (vorbelegten) Namen ein; Steam Deck hat eine Bildschirmtastatur
-		var pad_hint := UITheme.label("Enter oder Gamepad A: eintragen\nSteam Deck: STEAM + X öffnet die Tastatur", 20, UITheme.TEXT_DIM)
+		# [0.14.4] eigene Bildschirmtastatur: Auf dem Steam Deck (und mit jedem Pad ohne Tastatur) ließ sich der
+		# vorbelegte Name nicht ändern – die System-Tastatur erreicht das Spiel dort nicht zuverlässig.
+		var osk := _build_osk()
+		_right.add_child(osk)
+		var pad_hint := UITheme.label("Gamepad: A tippt · B löscht · Start trägt ein\nTastatur: tippen, Enter trägt ein", 20, UITheme.TEXT_DIM)
 		pad_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_right.add_child(pad_hint)
-		_entry_nodes = [nl, _name_edit, ok, pad_hint]
+		_entry_nodes = [nl, _name_edit, osk, pad_hint]
+		_set_name_fresh(true)
 		await get_tree().process_frame
 		if is_instance_valid(_name_edit):
-			_name_edit.grab_focus()
-			_name_edit.caret_column = _name_edit.text.length()
+			if Main.instance and Main.instance.last_input_pad and is_instance_valid(_osk_first):
+				_osk_first.grab_focus()   # zuletzt mit dem Gamepad gespielt (Steam Deck): Bildschirmtastatur
+			else:
+				_name_edit.grab_focus()   # Tastatur: direkt tippen, der vorbelegte Name ist markiert
 	else:
 		_show_table()
 
@@ -228,6 +238,119 @@ func _on_name_focus() -> void:
 	if not _name_edit.is_editing():
 		_name_edit.edit()
 	_name_edit.caret_column = _name_edit.text.length()
+	if _name_fresh:
+		_name_edit.select_all()   # [0.14.4] vorbelegter Name markiert: Tippen ersetzt ihn
+
+
+# ------------------------------------------------------------------ [0.14.4] Bildschirmtastatur
+func _build_osk() -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_osk_first = null
+	for row in OSK_ROWS:
+		var hb := HBoxContainer.new()
+		hb.add_theme_constant_override("separation", 6)
+		hb.alignment = BoxContainer.ALIGNMENT_CENTER
+		for i in String(row).length():
+			var ch: String = String(row).substr(i, 1)
+			var b := _osk_key(ch, _osk_type.bind(ch), Vector2(54, 50))
+			hb.add_child(b)
+			if _osk_first == null:
+				_osk_first = b
+		box.add_child(hb)
+	var last := HBoxContainer.new()
+	last.add_theme_constant_override("separation", 6)
+	last.alignment = BoxContainer.ALIGNMENT_CENTER
+	last.add_child(_osk_key("LEER", _osk_type.bind(" "), Vector2(150, 50)))
+	last.add_child(_osk_key("LÖSCHEN", _osk_backspace, Vector2(170, 50)))
+	last.add_child(_osk_key("EINTRAGEN", _submit, Vector2(240, 50)))
+	box.add_child(last)
+	return box
+
+
+## Taste der Bildschirmtastatur: Knopf-Stil mit schmalen Innenrändern (UITheme.button ist für breite Menüknöpfe).
+func _osk_key(text: String, cb: Callable, min_size: Vector2) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.focus_mode = Control.FOCUS_ALL
+	b.custom_minimum_size = min_size
+	b.add_theme_font_size_override("font_size", 24)
+	if _key_styles.is_empty():
+		var th := UITheme.get_theme()
+		for st in ["normal", "hover", "pressed", "focus", "hover_pressed"]:
+			var sb := th.get_stylebox(st, "Button").duplicate() as StyleBox
+			sb.content_margin_left = 4
+			sb.content_margin_right = 4
+			sb.content_margin_top = 4
+			sb.content_margin_bottom = 4
+			_key_styles[st] = sb
+	for st in _key_styles:
+		b.add_theme_stylebox_override(st, _key_styles[st])
+	b.pressed.connect(cb)
+	b.focus_entered.connect(func(): Audio.ui("ui_move", -8.0))
+	b.mouse_entered.connect(func(): b.grab_focus())
+	return b
+
+
+func _set_name_fresh(on: bool) -> void:
+	_name_fresh = on
+	if _name_edit:
+		# der vorbelegte Name erscheint gedämpft, solange das erste Zeichen ihn ersetzt
+		_name_edit.add_theme_color_override("font_color", Color(UITheme.TEXT_DIM, 0.9) if on else Color(1, 1, 1))
+
+
+func _osk_type(ch: String) -> void:
+	if _name_edit == null or _leaving:
+		return
+	var t := "" if _name_fresh else _name_edit.text
+	if t.length() >= _name_edit.max_length:
+		Audio.ui("ui_error")
+		return
+	_name_edit.text = t + ch
+	_name_edit.caret_column = _name_edit.text.length()
+	_set_name_fresh(false)
+	Audio.ui("ui_type")
+
+
+func _osk_backspace() -> void:
+	if _name_edit == null or _leaving:
+		return
+	_name_edit.text = "" if _name_fresh else _name_edit.text.left(maxi(_name_edit.text.length() - 1, 0))
+	_name_edit.caret_column = _name_edit.text.length()
+	_set_name_fresh(false)
+	Audio.ui("ui_type")
+
+
+## Physische Tastatur, während der Fokus auf der Bildschirmtastatur liegt: Zeichen, Rücktaste und Enter gehen in
+## den Namen (sonst würden Enter/Leertaste die markierte Taste auslösen). Im Eingabefeld tippt Godot selbst.
+func _input(event: InputEvent) -> void:
+	if _name_edit == null or _leaving or not (event is InputEventKey) or not event.pressed:
+		return
+	if _name_edit.has_focus():
+		return
+	var k := event as InputEventKey
+	if k.keycode == KEY_ENTER or k.keycode == KEY_KP_ENTER:
+		_submit()
+	elif k.keycode == KEY_BACKSPACE:
+		_osk_backspace()
+	elif k.unicode >= 32 and not k.ctrl_pressed and not k.alt_pressed and not k.meta_pressed:
+		_osk_type(String.chr(k.unicode))
+	else:
+		return
+	get_viewport().set_input_as_handled()
+
+
+## Gamepad in der Namenseingabe: B löscht ein Zeichen, Start trägt ein.
+func _unhandled_input(event: InputEvent) -> void:
+	if _name_edit == null or _leaving or not (event is InputEventJoypadButton):
+		return
+	if event.is_action_pressed("ui_cancel"):
+		_osk_backspace()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("pause"):
+		_submit()
+		get_viewport().set_input_as_handled()
 
 
 func _submit() -> void:

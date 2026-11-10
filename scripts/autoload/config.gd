@@ -32,6 +32,11 @@ var max_fps := 240
 ## symbolik bleibt immer deckungsgleich mit der Welt. Ein-/Ausschalten der Ansicht: Optionen.
 var cockpit_lag := 1.0
 var difficulty_scale := 1.0             ## [FREI] von der Schwierigkeitsstufe gesetzt: Gegnerschaden ×s, Schwadron-Tempo ×√s, Abstand neuer Schwadrone ÷s^0.7
+## [Vorgabe 0.14.4] von der Stufe gesetzt (ab Normal false): Im Kampf keine Angaben zur Stärke des Gegners (Anzahl
+## Fighter/Zerstörer/Flaggschiff, Verteidiger), keine Zerstörerfarben im HUD, keine Rest-Treffer (Schildkästchen,
+## schwächer werdende Schildblase) und keine Hilfen zum Flaggschiff-Zeitpunkt (Ladebalken, „VERWUNDBAR!“, Meldungen).
+## Die Übersichtskarte zeigt die Stärke weiterhin; das Leuchten des Quadrats [ORIGINAL] bleibt.
+var combat_intel := true
 
 ## [Vorgabe 0.13.0] Schwierigkeitsstufen (Optionen). Die Stufe setzt beim Start jeder Partie die Werte unter "values"
 ## und gilt für die ganze Partie (eine Änderung mitten im Spiel wirkt ab der nächsten). Ausnahme: Schlüssel, die eine
@@ -51,21 +56,23 @@ const DIFFICULTY_LEVELS := [
 		"values": {"difficulty_scale": 1.0, "initial_squadrons": 2, "enemy_city_count_min": 6, "enemy_city_count_max": 8,
 			"enemy_home_city_count": 12, "enemy_planet_area_factor": 1.0}},
 	{"key": "normal", "name": "Normal",
-		"desc": "Wie Anfänger, aber 3 Schwadrone zu Beginn",
+		"desc": "Wie Anfänger, aber 3 Schwadrone zu Beginn – die Stärke des Gegners steht nur noch auf der Karte, nicht im Kampf",
 		"values": {"difficulty_scale": 1.0, "initial_squadrons": 3, "enemy_city_count_min": 6, "enemy_city_count_max": 8,
-			"enemy_home_city_count": 12, "enemy_planet_area_factor": 1.0}},
+			"enemy_home_city_count": 12, "enemy_planet_area_factor": 1.0, "combat_intel": false}},
 	{"key": "fortgeschritten", "name": "Fortgeschritten",
-		"desc": "4 Schwadrone zu Beginn, 15–17 Städte je Feindplanet (Heimatwelt 20), weiter verteilt",
+		"desc": "4 Schwadrone zu Beginn, 15–17 Städte je Feindplanet (Heimatwelt 20), weiter verteilt – Stärke des Gegners nur auf der Karte",
 		"values": {"difficulty_scale": 1.0, "initial_squadrons": 4, "enemy_city_count_min": 15, "enemy_city_count_max": 17,
-			"enemy_home_city_count": 20, "enemy_planet_area_factor": 1.45}},
+			"enemy_home_city_count": 20, "enemy_planet_area_factor": 1.45, "combat_intel": false}},
 	{"key": "hart", "name": "Hart",
 		"desc": "Wie Fortgeschritten, Schwadrone in Helion 10 % schneller – kann Vorrhal keine Schwadrone mehr bauen, greift ein zweites, kleineres Feindsystem an",
 		"values": {"difficulty_scale": 1.0, "initial_squadrons": 4, "enemy_city_count_min": 15, "enemy_city_count_max": 17,
-			"enemy_home_city_count": 20, "enemy_planet_area_factor": 1.45, "squadron_speed_factor": 1.1, "second_system_mode": 1}},
+			"enemy_home_city_count": 20, "enemy_planet_area_factor": 1.45, "squadron_speed_factor": 1.1, "second_system_mode": 1,
+			"combat_intel": false}},
 	{"key": "experte", "name": "Experte",
 		"desc": "Wie Hart – das zweite Feindsystem greift aber schon an, sobald in Helion erstmals {empty_time} s lang {empty_max} unterwegs ist",
 		"values": {"difficulty_scale": 1.0, "initial_squadrons": 4, "enemy_city_count_min": 15, "enemy_city_count_max": 17,
-			"enemy_home_city_count": 20, "enemy_planet_area_factor": 1.45, "squadron_speed_factor": 1.1, "second_system_mode": 2}},
+			"enemy_home_city_count": 20, "enemy_planet_area_factor": 1.45, "squadron_speed_factor": 1.1, "second_system_mode": 2,
+			"combat_intel": false}},
 ]
 
 # ---------------------------------------------------------------------------------------------
@@ -225,7 +232,7 @@ var destroyer_planet_hit_scale := 0.7
 # ---------------------------------------------------------------------------------------------
 var flagship_points := 5000             ## [ORIGINAL]
 var flagship_charge_time := 13.0        ## [ORIGINAL] lange Vorlaufzeit; Quadrat wird langsam heller
-var flagship_vulnerable_time := 2.0     ## [ORIGINAL] nur kurz vor dem Schuss verwundbar
+var flagship_vulnerable_time := 3.0     ## [Vorgabe 0.14.4] alle Stufen 50 % länger als [ORIGINAL] 2,0 – nur kurz vor dem Schuss verwundbar
 var flagship_cooldown := 14.0           ## [FREI] Pause nach dem Schuss (bis 0.10.1: 4,5)
 var flagship_damage := 20.0             ## [VERMUTET] ein Fünftel der Energie (bis 0.10.1: 35)
 var flagship_hit_chance := 0.9          ## [FREI] (Ausweichen halbiert)
@@ -256,6 +263,11 @@ var single_destroyer_stop_time := 18.0  ## [VERMUTET]
 var single_destroyer_move_time := 10.0  ## [VERMUTET]
 var initial_squadrons := 2              ## [FREI] Schwadrone beim Öffnen der Karte nach dem Orbit-Kampf
 var initial_squadron_levels := [0, 1]   ## [FREI] Stufe je Start-Schwadron (0 = Stufe 1); das zweite kommt mit Zusammensetzung von Stufe 2
+## [Vorgabe 0.14.4] Start-Schwadrone beginnen auf allen Stufen nahe dem Sprungpunkt des Feindsystems: Anteil der
+## Strecke Sprungpunkt → Ziel für das erste, dazu je weiteres Schwadron der Abstand. Bis 0.14.3: 0,25 + 0,2 je
+## Schwadron – auf den Stufen mit 3–4 Start-Schwadronen standen die letzten schon fast an ihren Planeten.
+var initial_squadron_progress := 0.04
+var initial_squadron_progress_step := 0.03
 var spawn_interval_start := 150.0       ## [FREI] Abstand neuer Schwadrone zu Beginn
 var spawn_interval_min := 70.0          ## [FREI]
 var spawn_interval_factor := 0.88       ## [FREI] pro Schwierigkeitsstufe

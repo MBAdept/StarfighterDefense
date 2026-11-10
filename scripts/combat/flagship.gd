@@ -145,7 +145,8 @@ func _process(delta: float) -> void:
 		St.VULNERABLE:
 			_set_brightness(0.96 + 0.04 * sin(t * TAU * 1.5))   # fotosicher: ruhiges Pulsieren (vorher 4,8 Hz)
 			_ensure_charge_sound(0.1)
-			Audio.loop_set("flagship_charge", 1.55 + 0.05 * sin(t * 20.0))
+			# [Vorgabe 0.14.4] ab Normal kein eigenes Tonsignal fürs Fenster (Tonhöhe bleibt oben, ohne Vibrato)
+			Audio.loop_set("flagship_charge", (1.55 + 0.05 * sin(t * 20.0)) if Config.combat_intel else 1.5)
 			if st_time >= Config.flagship_vulnerable_time:
 				if _retreat_armed:
 					# [FREI] kein Abschiedsschuss nach dem Schwadronsieg: das Fenster war die letzte Chance

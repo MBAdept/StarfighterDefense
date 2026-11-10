@@ -108,6 +108,10 @@ func _model_aabb() -> AABB:
 
 func _update_shield_visual() -> void:
 	var sh := data.shields_left()
+	if not Config.combat_intel:
+		# [Vorgabe 0.14.4] ab Normal: Schildblase gleich stark bis zur Vernichtung – sie verrät nicht, wie viele
+		# Treffer noch fehlen (die Farbe bleibt, der Treffer-Aufblitz auch)
+		sh = Config.destroyer_hits_needed(data.color) - 1
 	shield.visible = sh > 0 or shield_hit > 0.0
 	shield_mat.set_shader_parameter("strength", 0.12 + 0.13 * sh)
 	shield_mat.set_shader_parameter("hit", shield_hit)

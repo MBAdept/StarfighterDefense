@@ -34,6 +34,10 @@ var impact_city := -1             ## intakte Stadt im Trefferkreis (-1 = keine)
 var impact_pending := false       ## auf diese Stadt fällt bereits eine Bombe (Marke nicht grün)
 var _cam_pitch := 0.0
 var _reinforce_t := -1.0          ## Zeit bis zur nächsten Verstärkung (nach Vernichtung der Verteidiger)
+var terrain: PlanetTerrain = null ## [0.14.4] Gelände (Höhe für Bombenflug, Felsen)
+var _ground_mat: ShaderMaterial
+var _city_uniforms := []          ## [0.14.4] Vector4 je Stadt (x, z, Platzradius, intakt) für den Boden-Shader
+var _road_ends := []              ## [0.14.4] je Straße/Ader die Städte an den Enden [a, b] (-1 = keine)
 
 
 static func create(p: PlanetData) -> PlanetCombat:
@@ -115,72 +119,82 @@ func _build_world() -> void:
 	var sa := rng2.randf() * TAU
 	make_sun(Vector3(cos(sa), rng2.randf_range(0.35, 0.6), sin(sa)), look.sun, 1.5, Settings.shadows_enabled())
 	_build_ground()
-	_build_mountains()
 	_build_cities()
 	_build_rocks()
 	_build_dust()
 
 
+## [0.14.4] Gelände statt flacher Ebene und Bergring: Talkessel mit Hügeln/Bergen außerhalb des Einsatzgebiets,
+## sanfte Bodenwellen und ebene Stadtplätze im Gebiet (siehe PlanetTerrain), Straßen bzw. Adern im Shader.
 func _build_ground() -> void:
+	var tl := PlanetLook.terrain(planet.type)
+	terrain = PlanetTerrain.new(planet, tl, float(look.water))
+	var res: Array = [[160, 320], [128, 256], [96, 224]][clampi(Settings.quality, 0, 2)]
 	var g := MeshInstance3D.new()
-	var pm := PlaneMesh.new()
-	pm.size = Vector2(8000, 8000)
-	g.mesh = pm
+	g.mesh = terrain.build_mesh(int(res[0]), int(res[1]))
 	var m := ShaderMaterial.new()
 	m.shader = load("res://shaders/ground.gdshader")
 	m.set_shader_parameter("ground_a", look.ground_a)
 	m.set_shader_parameter("ground_b", look.ground_b)
+	m.set_shader_parameter("rock_color", tl.rock)
+	m.set_shader_parameter("accent", tl.accent)
 	m.set_shader_parameter("grid_color", look.grid)
 	m.set_shader_parameter("noise_tex", Effects.noise_texture())
 	m.set_shader_parameter("lava", look.lava)
-	m.set_shader_parameter("water", look.water * 0.5)
+	m.set_shader_parameter("water", look.water)
+	m.set_shader_parameter("water_level", PlanetTerrain.WATER_LEVEL)
 	if look.has("water_color"):
 		m.set_shader_parameter("water_color", look.water_color)
+	m.set_shader_parameter("snow", float(tl.get("snow", 0.0)))
+	m.set_shader_parameter("style", int(tl.style))
+	m.set_shader_parameter("area", planet.area())
+	_city_uniforms.clear()
+	for i in mini(planet.city_pos.size(), 24):
+		var cp: Vector2 = planet.city_pos[i]
+		_city_uniforms.append(Vector4(cp.x, cp.y, 28.0, 1.0 if planet.cities[i] else 0.0))
+	m.set_shader_parameter("cities", _city_uniforms)
+	m.set_shader_parameter("city_count", _city_uniforms.size())
+	var rs: Array = terrain.road_segments(32)
+	var roads := []
+	_road_ends.clear()
+	for r in rs:
+		roads.append(r.seg)
+		_road_ends.append([int(r.a), int(r.b)])
+	m.set_shader_parameter("roads", roads)
+	m.set_shader_parameter("road_count", roads.size())
+	m.set_shader_parameter("road_alive", _road_alive())
 	g.material_override = m
 	g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(g)
+	_ground_mat = m
 
 
-func _build_mountains() -> void:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var n := 320
-	var radius := 3000.0
-	var fn := FastNoiseLite.new()
-	fn.seed = planet.seed
-	fn.frequency = 0.9
-	fn.fractal_octaves = 5
-	var col: Color = (look.ground_b as Color).darkened(0.35)
-	var ridge: Array = []
-	for i in n + 1:
-		var a := TAU * i / n
-		var h := 70.0 + 260.0 * clampf(fn.get_noise_2d(cos(a) * 3.0, sin(a) * 3.0) * 0.5 + 0.55, 0.0, 1.3)
-		h += 90.0 * absf(sin(a * 7.0 + planet.seed % 7))
-		ridge.append(h)
-	for i in n:
-		var a0 := TAU * i / n
-		var a1 := TAU * (i + 1) / n
-		var p0 := Vector3(cos(a0) * radius, -20.0, sin(a0) * radius)
-		var p1 := Vector3(cos(a1) * radius, -20.0, sin(a1) * radius)
-		var q0 := Vector3(cos(a0) * radius * 0.97, ridge[i], sin(a0) * radius * 0.97)
-		var q1 := Vector3(cos(a1) * radius * 0.97, ridge[i + 1], sin(a1) * radius * 0.97)
-		for v in [[p0, q0, p1], [p1, q0, q1]]:
-			var nrm: Vector3 = ((v[1] - v[0]).cross(v[2] - v[0])).normalized()
-			if nrm.dot(-v[0]) < 0.0:
-				nrm = -nrm
-			for p in v:
-				st.set_normal(nrm)
-				st.set_color(col)
-				st.add_vertex(p)
-	var mi := MeshInstance3D.new()
-	mi.mesh = st.commit()
-	var m := StandardMaterial3D.new()
-	m.vertex_color_use_as_albedo = true
-	m.roughness = 1.0
-	m.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mi.material_override = m
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(mi)
+## [0.14.4] Geländehöhe (m) an (x, z); ohne Gelände eben.
+func ground_y(x: float, z: float) -> float:
+	return terrain.height(x, z) if terrain else 0.0
+
+
+## [0.14.4] Zerstörte Stadt: Platz im Boden-Shader verbrannt darstellen.
+func _update_city_uniform(i: int, alive: bool) -> void:
+	if _ground_mat == null or i < 0 or i >= _city_uniforms.size():
+		return
+	var v: Vector4 = _city_uniforms[i]
+	v.w = 1.0 if alive else 0.0
+	_city_uniforms[i] = v
+	_ground_mat.set_shader_parameter("cities", _city_uniforms)
+	_ground_mat.set_shader_parameter("road_alive", _road_alive())
+
+
+## Je Straße/Ader: Zustand der Städte an beiden Enden (Vector2; Ausfallstraßen außen immer „intakt“).
+func _road_alive() -> Array:
+	var out := []
+	for e in _road_ends:
+		var a: int = e[0]
+		var b: int = e[1]
+		var fa := 1.0 if a < 0 or a >= _city_uniforms.size() else (_city_uniforms[a] as Vector4).w
+		var fb := 1.0 if b < 0 or b >= _city_uniforms.size() else (_city_uniforms[b] as Vector4).w
+		out.append(Vector2(fa, fb))
+	return out
 
 
 func _city_model_name(i: int) -> String:
@@ -207,6 +221,7 @@ func _build_cities() -> void:
 
 
 func _set_city_model(i: int, alive: bool) -> void:
+	_update_city_uniform(i, alive)
 	var root: Node3D = city_nodes[i]
 	for c in root.get_children():
 		c.queue_free()
@@ -305,7 +320,8 @@ func _build_rocks() -> void:
 					break
 			var s := rng.randf_range(0.6, 2.4)
 			var b := Basis().rotated(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.7, 1.4), s))
-			mm.set_instance_transform(i, Transform3D(b, Vector3(p.x, -0.2, p.y)))
+			var gy := terrain.surface_height(p.x, p.y) if terrain else 0.0   # auf der sichtbaren Oberfläche
+			mm.set_instance_transform(i, Transform3D(b, Vector3(p.x, gy - 0.3, p.y)))
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
 		var rm := StandardMaterial3D.new()
@@ -446,6 +462,8 @@ func _begin_attack(landing_now: bool) -> void:
 		add_enemy(d, start)
 	wave_timer = 2.0
 	var sub := "%d Zerstörer bombardieren die Städte" % squadron.destroyers.size()
+	if not Config.combat_intel:
+		sub = "Zerstörer bombardieren die Städte"   # [Vorgabe 0.14.4] ab Normal ohne Anzahl
 	if landing_now:
 		hud.show_message("FEINDLICHE LANDUNG!", sub, 3.0, UITheme.RED)
 		Audio.alarm(-4.0)
@@ -503,7 +521,7 @@ func _update_waves(delta: float) -> void:
 		wp.y = Config.planet_altitude + randf_range(0, 6)
 		add_enemy(f, wp)
 	Audio.sfx("wave_incoming", -2.0)
-	hud.show_message("FIGHTER IM ANFLUG", "%d Fighter · Welle %d" % [n, wave], 1.6, UITheme.FIGHTER_COLOR, true)
+	hud.show_message("FIGHTER IM ANFLUG", ("%d Fighter · Welle %d" % [n, wave]) if Config.combat_intel else "Welle %d" % wave, 1.6, UITheme.FIGHTER_COLOR, true)
 
 
 func _on_enemy_removed(e: Enemy) -> void:
@@ -659,7 +677,10 @@ func _setup_enemy_planet() -> void:
 		hud.show_message(title, "Alle Städte zerstört", 2.5, UITheme.TEXT_DIM)
 	elif planet.defenders > 0:
 		wave_timer = Config.enemy_defender_first_wave
-		hud.show_message(title, "%d Verteidiger steigen auf · %d Bomben an Bord (Q: Bomben)" % [planet.defenders, GameState.bombs], 3.4, UITheme.RED)
+		if Config.combat_intel:
+			hud.show_message(title, "%d Verteidiger steigen auf · %d Bomben an Bord (Q: Bomben)" % [planet.defenders, GameState.bombs], 3.4, UITheme.RED)
+		else:
+			hud.show_message(title, "Verteidiger steigen auf · %d Bomben an Bord (Q: Bomben)" % GameState.bombs, 3.4, UITheme.RED)
 		Audio.alarm(-6.0)
 	else:
 		hud.show_message(title, "Keine Luftverteidigung · %d Bomben an Bord (Q: Bomben)" % GameState.bombs, 3.2, UITheme.AMBER)
@@ -698,7 +719,7 @@ func _update_defender_waves(delta: float) -> void:
 	var n := mini(Config.fighters_per_wave, planet.defenders)
 	_spawn_defenders(n, false)
 	Audio.sfx("wave_incoming", -2.0)
-	hud.show_message("VERTEIDIGER IM ANFLUG", "%d Fighter · Bestand %d" % [n, planet.defenders], 1.6, UITheme.FIGHTER_COLOR, true)
+	hud.show_message("VERTEIDIGER IM ANFLUG", ("%d Fighter · Bestand %d" % [n, planet.defenders]) if Config.combat_intel else "", 1.6, UITheme.FIGHTER_COLOR, true)
 
 
 ## [Vorgabe] Verteidiger vernichtet: gelegentlich trifft Verstärkung ein (1–3 Fighter), solange Städte stehen.
@@ -717,7 +738,7 @@ func _update_reinforcements(delta: float) -> void:
 	_spawn_defenders(n, true)
 	Audio.sfx("wave_incoming", -2.0)
 	Audio.play_music(music_track(), 2.0)
-	hud.show_message("VERSTÄRKUNG IM ANFLUG", "%d Fighter" % n, 1.6, UITheme.FIGHTER_COLOR, true)
+	hud.show_message("VERSTÄRKUNG IM ANFLUG", ("%d Fighter" % n) if Config.combat_intel else "", 1.6, UITheme.FIGHTER_COLOR, true)
 
 
 func _spawn_defenders(n: int, reinforcement: bool) -> void:
@@ -767,13 +788,30 @@ static func _ballistic(p0: Vector3, v0: Vector3, t: float) -> Vector3:
 	return p0 + v0 * t + Vector3(0.0, -0.5 * Config.bomb_gravity * t * t, 0.0)
 
 
-## [FREI] Ballistischer Aufschlagpunkt (Boden y = 0) einer jetzt abgeworfenen Bombe.
+## [0.14.4] Fallzeit bis zum Gelände (Halbierungsverfahren entlang der Flugbahn; auch an steilen Seeufern genau).
+## Auf den Stadtplätzen ist der Boden exakt y = 0 – dort ist der Aufschlag genau wie bisher.
+func _impact_time(p0: Vector3, v0: Vector3) -> float:
+	if terrain == null:
+		return _fall_time(p0.y, v0.y)
+	var lo := 0.0
+	var hi := _fall_time(p0.y - PlanetTerrain.LAKE_DEPTH + 1.0, v0.y)   # sicher unter dem tiefsten Seegrund
+	for i in 18:
+		var mid := (lo + hi) * 0.5
+		var q := _ballistic(p0, v0, mid)
+		if q.y > terrain.height(q.x, q.z):
+			lo = mid
+		else:
+			hi = mid
+	return hi
+
+
+## [FREI] Ballistischer Aufschlagpunkt einer jetzt abgeworfenen Bombe (auf dem Gelände).
 func predict_impact() -> Vector3:
 	var r := _bomb_release()
 	var p0: Vector3 = r[0]
 	var v0: Vector3 = r[1]
-	var hit := _ballistic(p0, v0, _fall_time(p0.y, v0.y))
-	return Vector3(hit.x, 0.0, hit.z)
+	var hit := _ballistic(p0, v0, _impact_time(p0, v0))
+	return Vector3(hit.x, ground_y(hit.x, hit.z), hit.z)
 
 
 ## Punkte der vorausberechneten Flugbahn (für die HUD-Darstellung).
@@ -781,7 +819,7 @@ func bomb_trajectory(n: int) -> Array:
 	var r := _bomb_release()
 	var p0: Vector3 = r[0]
 	var v0: Vector3 = r[1]
-	var tf := _fall_time(p0.y, v0.y)
+	var tf := _impact_time(p0, v0)
 	var out := []
 	for i in range(1, n + 1):
 		out.append(_ballistic(p0, v0, tf * float(i) / float(n)))
@@ -797,7 +835,7 @@ func drop_bomb() -> void:
 	var node := _make_bomb_node()
 	add_child(node)
 	node.global_position = p0
-	var t_hit := _fall_time(p0.y, v0.y)
+	var t_hit := _impact_time(p0, v0)
 	var hit := _ballistic(p0, v0, t_hit)
 	_bombs.append({"p0": p0, "v0": v0, "t": 0.0, "t_hit": t_hit, "node": node, "city": _city_at(Vector2(hit.x, hit.z))})
 	if Audio.has_sound("bomb_release"):
@@ -857,7 +895,7 @@ func _update_bombs(delta: float) -> void:
 			_bombs.erase(b)
 			if is_instance_valid(n):
 				n.queue_free()
-			_bomb_impact(Vector3(pos.x, 0.0, pos.z))
+			_bomb_impact(Vector3(pos.x, ground_y(pos.x, pos.z), pos.z))
 
 
 ## Beim Verlassen des Planeten (Sprung über die Karte): noch fallende Bomben schlagen sofort ein –
@@ -868,7 +906,7 @@ func resolve_pending_bombs() -> void:
 		var hit := _ballistic(b.p0, b.v0, float(b.t_hit))
 		if is_instance_valid(b.node):
 			b.node.queue_free()
-		_bomb_impact(Vector3(hit.x, 0.0, hit.z))
+		_bomb_impact(Vector3(hit.x, ground_y(hit.x, hit.z), hit.z))
 
 
 ## Intakte Stadt, deren Mitte höchstens bomb_hit_radius vom Punkt entfernt ist (-1 = keine).
@@ -910,7 +948,7 @@ func _add_scorch(p: Vector3, size: float) -> void:
 	d.modulate = Color(0.05, 0.03, 0.03, 0.9)
 	d.size = Vector3(size * 2.0, 14.0, size * 2.0)
 	add_child(d)
-	d.global_position = Vector3(p.x, 0.0, p.z)
+	d.global_position = Vector3(p.x, p.y, p.z)   # [0.14.4] auf dem Gelände (Projektionsbox ±7 m)
 	d.rotation.y = randf() * TAU
 
 
